@@ -130,7 +130,7 @@ async function mockAnalyze(memo: string): Promise<AiAnalysisResult> {
     actions.splice(2, 0, '누수 테스트 실시')
   }
   if (t.includes('천장') && category === '누수') actions.push('천장 마감재 교체 검토')
-  const recommendedActions = [...new Set(actions)].slice(0, 5)
+  const recommendedActions = Array.from(new Set(actions)).slice(0, 5)
 
   // ─ Cost estimation ─
   const baseCost: Record<string, [number, number, number]> = {
