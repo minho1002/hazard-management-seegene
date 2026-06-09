@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" style="background:#f8fafc">
+  <rect x="50" y="50" width="700" height="500" rx="4" fill="none" stroke="#94a3b8" stroke-width="2"/>
+  <!-- 로비 -->
+  <rect x="80" y="80" width="640" height="200" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="400" y="185" text-anchor="middle" font-size="16" fill="#475569" font-family="sans-serif">로비 (중앙)</text>
+  <!-- 안내데스크 -->
+  <rect x="310" y="120" width="180" height="60" fill="#cbd5e1" stroke="#64748b" stroke-width="1"/>
+  <text x="400" y="155" text-anchor="middle" font-size="12" fill="#475569" font-family="sans-serif">안내데스크</text>
+  <!-- 복도 -->
+  <rect x="80" y="310" width="640" height="50" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+  <text x="400" y="340" text-anchor="middle" font-size="13" fill="#64748b" font-family="sans-serif">복도</text>
+  <!-- 회의실 -->
+  <rect x="80" y="390" width="160" height="130" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="160" y="460" text-anchor="middle" font-size="12" fill="#475569" font-family="sans-serif">회의실 101</text>
+  <!-- 사무실 -->
+  <rect x="280" y="390" width="200" height="130" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="380" y="460" text-anchor="middle" font-size="12" fill="#475569" font-family="sans-serif">사무실 102</text>
+  <!-- 화장실 -->
+  <rect x="520" y="390" width="110" height="130" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="575" y="460" text-anchor="middle" font-size="12" fill="#475569" font-family="sans-serif">화장실</text>
+  <!-- 계단 -->
+  <rect x="670" y="390" width="80" height="130" fill="#dde1e7" stroke="#64748b" stroke-width="1.5"/>
+  <text x="710" y="460" text-anchor="middle" font-size="12" fill="#475569" font-family="sans-serif">계단</text>
+  <text x="400" y="30" text-anchor="middle" font-size="16" fill="#1e293b" font-weight="bold" font-family="sans-serif">1층 평면도 - 본관</text>
+</svg>

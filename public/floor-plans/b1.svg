@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" style="background:#f8fafc">
+  <rect x="50" y="50" width="700" height="500" rx="4" fill="none" stroke="#94a3b8" stroke-width="2"/>
+  <!-- 주차장 A구역 -->
+  <rect x="80" y="80" width="320" height="350" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="240" y="265" text-anchor="middle" font-size="15" fill="#475569" font-family="sans-serif">주차장 A구역</text>
+  <!-- 주차 라인 -->
+  <line x1="120" y1="110" x2="120" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <line x1="180" y1="110" x2="180" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <line x1="240" y1="110" x2="240" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <line x1="300" y1="110" x2="300" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <line x1="360" y1="110" x2="360" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <!-- 주차장 B구역 -->
+  <rect x="440" y="80" width="290" height="350" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="585" y="265" text-anchor="middle" font-size="15" fill="#475569" font-family="sans-serif">주차장 B구역</text>
+  <line x1="480" y1="110" x2="480" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <line x1="540" y1="110" x2="540" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <line x1="600" y1="110" x2="600" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <line x1="660" y1="110" x2="660" y2="400" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4"/>
+  <!-- 통로 -->
+  <rect x="80" y="460" width="650" height="60" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+  <text x="400" y="497" text-anchor="middle" font-size="13" fill="#64748b" font-family="sans-serif">통로</text>
+  <text x="400" y="30" text-anchor="middle" font-size="16" fill="#1e293b" font-weight="bold" font-family="sans-serif">지하1층 평면도 - 본관</text>
+</svg>
