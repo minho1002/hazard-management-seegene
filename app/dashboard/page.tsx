@@ -114,7 +114,83 @@ export default function DashboardPage() {
     },
   }
 
+  // ── AI 분석 인사이트 데이터 ──────────────────────────────────────────────
+
+  // 1. 반복 발생 원인 TOP10
+  const causeCounts: Record<string, { count: number; totalCost: number; recurrences: number }> = {}
+  defects.forEach(d => {
+    const cause = d.causeCategory ?? (state.categories.find(c => c.id === d.categoryId)?.name ?? '미분류')
+    if (!causeCounts[cause]) causeCounts[cause] = { count: 0, totalCost: 0, recurrences: 0 }
+    causeCounts[cause].count++
+    causeCounts[cause].totalCost += d.totalCost
+    causeCounts[cause].recurrences += d.recurrenceCount
+  })
+  const topCauses = Object.entries(causeCounts)
+    .sort((a, b) => (b[1].count + b[1].recurrences) - (a[1].count + a[1].recurrences))
+    .slice(0, 10)
+  const topCausesMax = Math.max(1, ...topCauses.map(([, v]) => v.count + v.recurrences))
+
+  // 2. 시설별 고장 순위
+  const floorMap: Record<string, { count: number; cost: number; name: string }> = {}
+  defects.forEach(d => {
+    const fp = state.floorPlans.find(f => f.id === d.floorPlanId)
+    const key = fp?.name ?? '층 미지정'
+    if (!floorMap[key]) floorMap[key] = { count: 0, cost: 0, name: key }
+    floorMap[key].count++
+    floorMap[key].cost += d.totalCost
+  })
+  const floorRanking = Object.values(floorMap).sort((a, b) => b.count - a.count)
+  const floorMax = Math.max(1, ...floorRanking.map(f => f.count))
+
+  // 3. 분야별 비용 분석
+  const catCostData = state.categories.map(c => {
+    const cDefs = defects.filter(d => d.categoryId === c.id)
+    const costDefs = cDefs.filter(d => d.totalCost > 0)
+    const catTotal = cDefs.reduce((s, d) => s + d.totalCost, 0)
+    const avg = costDefs.length > 0 ? Math.round(catTotal / costDefs.length) : 0
+    return { ...c, catTotal, avg, count: cDefs.length, costCount: costDefs.length }
+  }).sort((a, b) => b.catTotal - a.catTotal)
+  const catCostMax = Math.max(1, ...catCostData.map(c => c.catTotal))
+
+  // 4. 재발생 하자 분석
+  const recurredDefs = defects.filter(d => d.recurrenceCount > 0).sort((a, b) => b.recurrenceCount - a.recurrenceCount)
+  const recurRateByCat = state.categories.map(c => {
+    const all = defects.filter(d => d.categoryId === c.id)
+    const recurred = all.filter(d => d.recurrenceCount > 0)
+    return { ...c, total: all.length, recurred: recurred.length, rate: all.length > 0 ? Math.round(recurred.length / all.length * 100) : 0 }
+  }).sort((a, b) => b.rate - a.rate)
+
+  // 5. 취약 구역 분석
+  const zoneMap: Record<string, { defects: number; cost: number; critical: number; name: string }> = {}
+  defects.forEach(d => {
+    const fp = state.floorPlans.find(f => f.id === d.floorPlanId)
+    const zone = fp?.name ?? '미확인'
+    if (!zoneMap[zone]) zoneMap[zone] = { defects: 0, cost: 0, critical: 0, name: zone }
+    zoneMap[zone].defects++
+    zoneMap[zone].cost += d.totalCost
+    if (d.severity === 'critical' || d.severity === 'high') zoneMap[zone].critical++
+  })
+  const zones = Object.values(zoneMap)
+    .map(z => ({ ...z, score: z.defects + z.critical * 2 }))
+    .sort((a, b) => b.score - a.score)
+  const zoneMax = Math.max(1, ...zones.map(z => z.score))
+
+  // 6. 향후 예상 유지보수 비용
+  const monthsWithData = new Set(
+    defects.filter(d => d.totalCost > 0 && d.firstOccurredAt).map(d => d.firstOccurredAt!.slice(0, 7))
+  ).size || 1
+  const avgMonthly = Math.round(totalCost / monthsWithData)
+  const pendingPredCost = defects
+    .filter(d => d.status !== 'completed' && d.predictedCostAvg != null)
+    .reduce((s, d) => s + (d.predictedCostAvg ?? 0), 0)
+  const openCount = defects.filter(d => d.status !== 'completed').length
+  const forecast3m = Math.round(avgMonthly * 3 + pendingPredCost * 0.5)
+  const forecast6m = Math.round(avgMonthly * 6 + pendingPredCost * 0.8)
+  const forecast12m = Math.round(avgMonthly * 12 + pendingPredCost * 1.2)
+
   const card = { background: '#fff', border: '1px solid #e3e8ef', borderRadius: 12, boxShadow: '0 1px 3px rgba(10,37,64,0.06)', overflow: 'hidden' as const }
+  const aiCard = { background: '#fff', border: '1px solid rgba(99,91,255,.2)', borderRadius: 12, boxShadow: '0 1px 4px rgba(99,91,255,.07)', overflow: 'hidden' as const }
+  const aiCardHeader = { padding: '14px 16px 10px', borderBottom: '1px solid rgba(99,91,255,.1)', background: 'linear-gradient(135deg,rgba(99,91,255,.04),rgba(99,91,255,.01))' }
 
   function resetStorage() {
     localStorage.removeItem('hajaSys2')
@@ -286,6 +362,255 @@ export default function DashboardPage() {
             <div style={{ padding: '16px 18px' }}>
               <div style={{ position: 'relative', height: 180 }}>
                 <Bar data={vendorChartData} options={barOpts} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── AI 분석 인사이트 ──────────────────────────────────────────── */}
+        <div style={{ marginTop: 24 }}>
+          {/* Section Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '12px 16px', background: 'linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,.03))', borderRadius: 12, border: '1px solid rgba(99,91,255,.18)' }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#635bff,#8b85ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 14 }}>✨</span>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0a2540' }}>AI 분석 인사이트</div>
+              <div style={{ fontSize: '0.7rem', color: '#697386', marginTop: 1 }}>Rule-Based 분석 · 실시간 데이터 기반 인사이트 · LLM 교체 가능 아키텍처</div>
+            </div>
+          </div>
+
+          {/* Row A: 반복 발생 원인 TOP10 + 시설별 고장 순위 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            {/* Widget 1: 반복 발생 원인 TOP10 */}
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>반복 발생 원인 TOP10</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>원인 분류별 발생 + 재발 횟수 기준</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                {topCauses.length === 0 ? (
+                  <div style={{ color: '#aab', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0' }}>AI 분석 데이터 없음 — 하자 접수 후 AI 분석 실행</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {topCauses.map(([cause, v], i) => {
+                      const total = v.count + v.recurrences
+                      const pct = Math.round((total / topCausesMax) * 100)
+                      return (
+                        <div key={cause}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: i < 3 ? '#635bff' : '#697386', minWidth: 14 }}>#{i + 1}</span>
+                              <span style={{ fontSize: '0.75rem', color: '#0a2540', fontWeight: i < 3 ? 600 : 400 }}>{cause}</span>
+                            </div>
+                            <span style={{ fontSize: '0.7rem', color: '#425466', fontWeight: 600 }}>{total}회</span>
+                          </div>
+                          <div style={{ height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: i < 3 ? '#635bff' : '#a5b4fc', borderRadius: 999 }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Widget 2: 시설별 고장 순위 */}
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>시설별 고장 순위</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>층/구역별 하자 발생 빈도 순위</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                {floorRanking.length === 0 ? (
+                  <div style={{ color: '#aab', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0' }}>층 정보가 있는 하자 없음</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {floorRanking.slice(0, 8).map((f, i) => {
+                      const pct = Math.round((f.count / floorMax) * 100)
+                      const medals = ['🥇', '🥈', '🥉']
+                      const rank = medals[i] ?? `#${i + 1}`
+                      return (
+                        <div key={f.name}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <span style={{ fontSize: '0.7rem', minWidth: 18 }}>{rank}</span>
+                              <span style={{ fontSize: '0.75rem', color: '#0a2540', fontWeight: i < 3 ? 600 : 400 }}>{f.name}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: '0.65rem', color: '#697386' }}>{fmtKRW(f.cost)}</span>
+                              <span style={{ fontSize: '0.7rem', color: '#425466', fontWeight: 600 }}>{f.count}건</span>
+                            </div>
+                          </div>
+                          <div style={{ height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: i < 3 ? '#059669' : '#6ee7b7', borderRadius: 999 }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Row B: 분야별 비용 분석 + 재발생 하자 분석 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            {/* Widget 3: 분야별 비용 분석 */}
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>분야별 비용 분석</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>카테고리별 누적 처리 비용 및 평균</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {catCostData.map((c, i) => {
+                    const pct = Math.round((c.catTotal / catCostMax) * 100)
+                    const catColors = ['#635bff', '#059669', '#d97706', '#e11d48']
+                    const color = catColors[i % catColors.length]
+                    return (
+                      <div key={c.id}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+                            <span style={{ fontSize: '0.75rem', color: '#0a2540', fontWeight: 500 }}>{c.name}</span>
+                            <span style={{ fontSize: '0.65rem', color: '#697386' }}>{c.count}건</span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0a2540' }}>{fmtKRW(c.catTotal)}</div>
+                            <div style={{ fontSize: '0.63rem', color: '#697386' }}>평균 {fmtKRW(c.avg)}</div>
+                          </div>
+                        </div>
+                        <div style={{ height: 6, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 999, opacity: 0.85 }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Widget 4: 재발생 하자 분석 */}
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>재발생 하자 분석</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>카테고리별 재발률 및 최다 재발 하자</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: '0.68rem', color: '#697386', marginBottom: 6, fontWeight: 600 }}>카테고리별 재발률</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {recurRateByCat.map(c => (
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: '0.72rem', color: '#0a2540', minWidth: 48 }}>{c.name}</span>
+                        <div style={{ flex: 1, height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${c.rate}%`, background: c.rate >= 50 ? '#e11d48' : c.rate >= 25 ? '#d97706' : '#635bff', borderRadius: 999 }} />
+                        </div>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 600, color: c.rate >= 50 ? '#e11d48' : '#425466', minWidth: 36, textAlign: 'right' }}>{c.rate}%</span>
+                        <span style={{ fontSize: '0.63rem', color: '#697386' }}>({c.recurred}/{c.total})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {recurredDefs.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.68rem', color: '#697386', marginBottom: 6, fontWeight: 600 }}>최다 재발 하자 TOP3</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {recurredDefs.slice(0, 3).map((d, i) => (
+                        <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 8px', background: '#faf9ff', borderRadius: 6, border: '1px solid rgba(99,91,255,.1)' }}>
+                          <span style={{ fontSize: '0.72rem', color: '#0a2540' }}>#{i + 1} {d.title.slice(0, 18)}{d.title.length > 18 ? '…' : ''}</span>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#635bff' }}>{d.recurrenceCount}회 재발</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Row C: 취약 구역 분석 + 향후 예상 유지보수 비용 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {/* Widget 5: 취약 구역 분석 */}
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>취약 구역 분석</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>취약 점수 = 하자수 + 고위험×2</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                {zones.length === 0 ? (
+                  <div style={{ color: '#aab', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0' }}>층/구역 데이터 없음</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {zones.slice(0, 7).map((z, i) => {
+                      const pct = Math.round((z.score / zoneMax) * 100)
+                      const level = pct >= 75
+                        ? { label: '위험', color: '#e11d48', bg: '#fef2f2' }
+                        : pct >= 40
+                          ? { label: '주의', color: '#d97706', bg: '#fffbeb' }
+                          : { label: '양호', color: '#059669', bg: '#f0fdf4' }
+                      return (
+                        <div key={z.name}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#697386', minWidth: 14 }}>#{i + 1}</span>
+                              <span style={{ fontSize: '0.75rem', color: '#0a2540', fontWeight: pct >= 75 ? 700 : 400 }}>{z.name}</span>
+                              <span style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: 4, background: level.bg, color: level.color, fontWeight: 700 }}>{level.label}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: '0.63rem', color: '#697386' }}>고위험 {z.critical}건</span>
+                              <span style={{ fontSize: '0.7rem', color: '#425466', fontWeight: 600 }}>{z.defects}건</span>
+                            </div>
+                          </div>
+                          <div style={{ height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: level.color, borderRadius: 999, opacity: 0.7 }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Widget 6: 향후 예상 유지보수 비용 */}
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>향후 예상 유지보수 비용</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>월평균 추세 + 진행중 예측비용 기반 추정</div>
+              </div>
+              <div style={{ padding: '14px 16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
+                  {([
+                    { label: '3개월', value: forecast3m, color: '#059669' },
+                    { label: '6개월', value: forecast6m, color: '#d97706' },
+                    { label: '12개월', value: forecast12m, color: '#635bff' },
+                  ] as const).map(f => (
+                    <div key={f.label} style={{ padding: '10px 8px', background: '#faf9ff', borderRadius: 8, border: '1px solid rgba(99,91,255,.12)', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#697386', marginBottom: 4 }}>{f.label} 예측</div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: f.color }}>{fmtKRW(f.value)}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f0f4f8' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#697386' }}>월평균 유지보수비 (실적)</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#0a2540' }}>{fmtKRW(avgMonthly)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f0f4f8' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#697386' }}>진행중 하자 예측비용</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#d97706' }}>{fmtKRW(pendingPredCost)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#697386' }}>미처리 하자 건수</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#e11d48' }}>{openCount}건</span>
+                  </div>
+                </div>
+                <div style={{ marginTop: 10, padding: '7px 10px', background: '#fffbeb', borderRadius: 6, border: '1px solid #fde68a' }}>
+                  <div style={{ fontSize: '0.65rem', color: '#92400e' }}>※ 예측값 = 월평균 × 개월 + 진행중 AI 예측비용 (가중치 적용). 실제 발생 비용과 차이 있을 수 있음.</div>
+                </div>
               </div>
             </div>
           </div>
