@@ -10,8 +10,9 @@ const menuItems = [
 ]
 
 const analysisItems = [
-  { href: '/reports', label: '보고서', icon: 'fa-solid fa-chart-bar' },
-  { href: '/ai',      label: 'AI 어시스턴트', icon: 'fa-solid fa-robot' },
+  { href: '/reports',    label: '보고서',       icon: 'fa-solid fa-chart-bar' },
+  { href: '/reports/ai', label: 'AI 보고서',    icon: 'fa-solid fa-wand-magic-sparkles' },
+  { href: '/ai',         label: 'AI 어시스턴트', icon: 'fa-solid fa-robot' },
 ]
 
 function NavItem({ href, label, icon, active }: { href: string; label: string; icon: string; active: boolean }) {
@@ -39,6 +40,8 @@ export default function SideNav() {
   const isActive = (href: string) => {
     if (href === '/defects')
       return path === '/defects' || (path.startsWith('/defects/') && path !== '/defects/new')
+    if (href === '/reports')
+      return path === '/reports'
     return path.startsWith(href)
   }
 

@@ -1,0 +1,384 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { useStore } from '@/lib/store'
+import {
+  generateReport,
+  type GeneratedReport,
+  type ReportType,
+  type ReportSection,
+} from '@/lib/aiReportService'
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+const fmtKRW = (v: number) =>
+  v >= 100_000_000 ? `${(v / 100_000_000).toFixed(1)}억` :
+  v >= 10_000 ? `${Math.round(v / 10_000).toLocaleString()}만` :
+  v > 0 ? `${v.toLocaleString()}원` : '-'
+
+// ── Report type configs ────────────────────────────────────────────────────
+
+const REPORT_TYPES: {
+  type: ReportType; icon: string; title: string; desc: string
+  features: string[]; color: string; bg: string; border: string
+}[] = [
+  {
+    type: 'field-analysis',
+    icon: 'fa-solid fa-chart-bar',
+    title: '분야별 분석 보고서',
+    desc: '카테고리별 하자 현황·빈도·비용 분석',
+    features: ['분야별 발생 빈도 분석', '처리 현황 및 완료율', '재발 위험 분야 도출', 'AI 분야별 개선 제언'],
+    color: '#635bff', bg: 'rgba(99,91,255,.07)', border: 'rgba(99,91,255,.25)',
+  },
+  {
+    type: 'budget-settlement',
+    icon: 'fa-solid fa-coins',
+    title: '예산 정산 보고서',
+    desc: '비용 집행 현황·AI 예측 정확도·월별 추이',
+    features: ['총 처리 비용 집계', '분야별 예산 집행', 'AI 예측 vs 실제 오차', '연간 예산 추정'],
+    color: '#059669', bg: 'rgba(5,150,105,.07)', border: 'rgba(5,150,105,.25)',
+  },
+  {
+    type: 'executive-ppt',
+    icon: 'fa-solid fa-file-powerpoint',
+    title: '경영진 보고용 PT',
+    desc: '시설 건강도·위험 요소·예산·권고사항 5장',
+    features: ['시설 건강도 점수', '주요 위험 현황', '예산 집행 요약', '향후 계획 및 권고사항'],
+    color: '#d97706', bg: 'rgba(217,119,6,.07)', border: 'rgba(217,119,6,.25)',
+  },
+]
+
+const SLIDE_HEADER_COLORS = ['#1e3a5f', '#9f1239', '#3730a3', '#065f46', '#78350f']
+
+// ── Section renderer ───────────────────────────────────────────────────────
+
+function SectionRenderer({ section }: { section: ReportSection }) {
+  if (section.type === 'kpi-grid' && section.kpiItems) {
+    const cols = Math.min(section.kpiItems.length, 4)
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 10 }}>
+        {section.kpiItems.map((item, i) => (
+          <div key={i} style={{ padding: '12px 14px', background: '#fafafa', borderRadius: 10, border: '1px solid #eef0f4', borderLeft: `3px solid ${item.color ?? '#635bff'}` }}>
+            <div style={{ fontSize: '0.67rem', color: '#697386', marginBottom: 4 }}>{item.label}</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0a2540' }}>{item.value}</div>
+            {item.sub && <div style={{ fontSize: '0.63rem', color: '#697386', marginTop: 3 }}>{item.sub}</div>}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (section.type === 'bar-list' && section.barItems) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {section.barItems.map((item, i) => (
+          <div key={i}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: '0.78rem', color: '#0a2540', fontWeight: 500 }}>{item.label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {item.sub && <span style={{ fontSize: '0.68rem', color: '#697386' }}>{item.sub}</span>}
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#425466' }}>
+                  {item.value >= 10000 ? fmtKRW(item.value) : `${item.value}건`}
+                </span>
+              </div>
+            </div>
+            <div style={{ height: 7, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${item.pct}%`, background: item.color ?? '#635bff', borderRadius: 999, transition: 'width 0.5s ease' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (section.type === 'table' && section.tableHeaders && section.tableRows) {
+    return (
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+          <thead>
+            <tr style={{ background: '#f8fafc' }}>
+              {section.tableHeaders.map((h, i) => (
+                <th key={i} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#425466', borderBottom: '1px solid #e3e8ef', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {section.tableRows.map((row, ri) => (
+              <tr key={ri} style={{ background: row.highlight ? 'rgba(99,91,255,.04)' : ri % 2 === 0 ? '#fff' : '#fafbfc' }}>
+                {row.cells.map((cell, ci) => (
+                  <td key={ci} style={{ padding: '7px 12px', color: row.highlight && ci === 0 ? '#635bff' : '#0a2540', fontWeight: row.highlight && ci === 0 ? 700 : 400, borderBottom: '1px solid #f0f4f8' }}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  if (section.type === 'slide-deck' && section.slides) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {section.slides.map(slide => {
+          const hdrColor = SLIDE_HEADER_COLORS[slide.slideNumber - 1] ?? '#0a2540'
+          return (
+            <div key={slide.slideNumber} style={{ border: '1px solid #e3e8ef', borderRadius: 12, overflow: 'hidden', boxShadow: '0 2px 6px rgba(10,37,64,.06)' }}>
+              <div style={{ background: hdrColor, padding: '13px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#fff' }}>{slide.slideNumber}</span>
+                  </div>
+                  <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#fff' }}>{slide.slideTitle}</span>
+                </div>
+                {slide.note && (
+                  <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,.9)', background: 'rgba(255,255,255,.18)', padding: '3px 9px', borderRadius: 99, fontWeight: 600 }}>{slide.note}</span>
+                )}
+              </div>
+              <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px' }}>
+                {slide.items.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f4f8' }}>
+                    <span style={{ fontSize: '0.73rem', color: '#697386' }}>{item.label}</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: item.accent ? hdrColor : '#0a2540' }}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return null
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────
+
+export default function AiReportPage() {
+  const { state } = useStore()
+  const [selectedType, setSelectedType] = useState<ReportType | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [report, setReport] = useState<GeneratedReport | null>(null)
+
+  const selectedCfg = REPORT_TYPES.find(r => r.type === selectedType)
+
+  async function handleGenerate() {
+    if (!selectedType) return
+    setLoading(true)
+    setReport(null)
+    try {
+      const result = await generateReport(selectedType, {
+        defects: state.defects,
+        categories: state.categories,
+        vendors: state.vendors,
+      })
+      setReport(result)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+
+      {/* ── Sticky header ── */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Link href="/reports" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.73rem', color: '#697386', textDecoration: 'none' }}>
+            <i className="fa-solid fa-arrow-left" style={{ fontSize: 10 }} />보고서
+          </Link>
+          <span style={{ color: '#d0d5dd', fontSize: '0.8rem' }}>/</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg,#635bff,#8b85ff)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#fff', fontSize: 11 }} />
+            </div>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0a2540' }}>AI 보고서 생성</span>
+          </div>
+        </div>
+        <span style={{ fontSize: '0.67rem', color: '#697386', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#635bff', display: 'inline-block' }} />
+          Rule-Based 분석 · LLM 교체 가능 아키텍처
+        </span>
+      </div>
+
+      <div style={{ padding: '28px 32px', maxWidth: 1000, margin: '0 auto' }}>
+
+        {/* ── Report type selection ── */}
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#425466', marginBottom: 11 }}>보고서 유형 선택</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+            {REPORT_TYPES.map(rt => {
+              const active = selectedType === rt.type
+              return (
+                <button
+                  key={rt.type}
+                  onClick={() => { setSelectedType(rt.type); setReport(null) }}
+                  style={{
+                    padding: '18px 20px', textAlign: 'left', cursor: 'pointer',
+                    background: active ? rt.bg : '#fff',
+                    border: `2px solid ${active ? rt.color : '#e3e8ef'}`,
+                    borderRadius: 14,
+                    boxShadow: active ? `0 0 0 3px ${rt.bg}` : '0 1px 3px rgba(10,37,64,.06)',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: active ? rt.color : '#f0f4f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <i className={rt.icon} style={{ color: active ? '#fff' : '#697386', fontSize: 14 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>{rt.title}</div>
+                      <div style={{ fontSize: '0.66rem', color: '#697386', marginTop: 2 }}>{rt.desc}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {rt.features.map((f, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 4, height: 4, borderRadius: '50%', background: active ? rt.color : '#d0d5dd', flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.69rem', color: '#697386' }}>{f}</span>
+                      </div>
+                    ))}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── Generate button ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+          <button
+            onClick={handleGenerate}
+            disabled={!selectedType || loading}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '11px 26px',
+              background: selectedType && !loading ? (selectedCfg?.color ?? '#635bff') : '#e3e8ef',
+              color: selectedType && !loading ? '#fff' : '#aab',
+              border: 'none', borderRadius: 10,
+              fontSize: '0.82rem', fontWeight: 700,
+              cursor: selectedType && !loading ? 'pointer' : 'not-allowed',
+              transition: 'all 0.15s',
+            }}
+          >
+            <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`} style={{ fontSize: 13 }} />
+            {loading ? '보고서 생성 중...' : '보고서 생성하기'}
+          </button>
+          {!selectedType && !loading && (
+            <span style={{ fontSize: '0.72rem', color: '#aab' }}>보고서 유형을 먼저 선택하세요</span>
+          )}
+          {report && !loading && (
+            <span style={{ fontSize: '0.72rem', color: '#059669' }}>
+              <i className="fa-solid fa-circle-check" style={{ marginRight: 5 }} />
+              생성 완료 — {report.generatedAt}
+            </span>
+          )}
+        </div>
+
+        {/* ── Loading state ── */}
+        {loading && (
+          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid rgba(99,91,255,.2)', padding: '36px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(99,91,255,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+              <i className="fa-solid fa-wand-magic-sparkles fa-beat" style={{ color: '#635bff', fontSize: 20 }} />
+            </div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0a2540' }}>AI 보고서를 생성하고 있습니다...</div>
+            <div style={{ fontSize: '0.72rem', color: '#697386' }}>데이터를 분석하고 인사이트를 도출하는 중</div>
+          </div>
+        )}
+
+        {/* ── Report preview ── */}
+        {report && !loading && (
+          <div>
+
+            {/* Report header card */}
+            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e3e8ef', padding: '20px 24px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: selectedCfg?.color ?? '#635bff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <i className={selectedCfg?.icon ?? 'fa-solid fa-file'} style={{ color: '#fff', fontSize: 12 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0a2540' }}>{report.title}</div>
+                    <div style={{ fontSize: '0.71rem', color: '#697386' }}>{report.subtitle}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>{report.period}</span>
+                  <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>생성: {report.generatedAt}</span>
+                  <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: 'rgba(99,91,255,.1)', borderRadius: 99, color: '#635bff', fontWeight: 600 }}>
+                    ✨ {report.basedOn === 'rule-based' ? 'Rule-Based AI' : 'LLM 분석'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Download stubs */}
+              <div style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
+                {[
+                  { icon: 'fa-solid fa-file-pdf',   label: 'PDF',  color: '#e11d48' },
+                  { icon: 'fa-solid fa-file-excel', label: 'Excel', color: '#059669' },
+                  { icon: 'fa-solid fa-file-word',  label: 'Word', color: '#2563eb' },
+                ].map(btn => (
+                  <button
+                    key={btn.label}
+                    onClick={() => alert(`${btn.label} 다운로드는 추후 지원 예정입니다.`)}
+                    title={`${btn.label} 다운로드 (준비 중)`}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: 'pointer', fontSize: '0.71rem', color: '#697386' }}
+                  >
+                    <i className={btn.icon} style={{ color: btn.color, fontSize: 13 }} />
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Content sections */}
+            {report.sections.map(section => (
+              <div key={section.id} style={{ background: '#fff', borderRadius: 14, border: '1px solid #e3e8ef', padding: '18px 24px', marginBottom: 14 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f0f4f8' }}>
+                  {section.title}
+                </div>
+                <SectionRenderer section={section} />
+              </div>
+            ))}
+
+            {/* AI 종합 의견 */}
+            <div style={{ background: 'linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,.03))', borderRadius: 14, border: '1px solid rgba(99,91,255,.2)', padding: '20px 24px', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#635bff,#8b85ff)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#fff', fontSize: 12 }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>AI 종합 의견</div>
+                  <div style={{ fontSize: '0.66rem', color: '#697386', marginTop: 1 }}>Rule-Based 분석 · LLM API 연동 시 더욱 정교한 분석 제공 가능</div>
+                </div>
+              </div>
+              <div style={{ fontSize: '0.82rem', lineHeight: 1.75, color: '#0a2540', marginBottom: 14, padding: '12px 14px', background: 'rgba(255,255,255,.75)', borderRadius: 10, border: '1px solid rgba(99,91,255,.12)' }}>
+                {report.aiOpinion}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {report.aiOpinionBullets.map((bullet, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ width: 18, height: 18, borderRadius: 4, background: 'rgba(99,91,255,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#635bff' }}>{i + 1}</span>
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#425466', lineHeight: 1.55 }}>{bullet}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Metadata footer */}
+            <div style={{ padding: '10px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e3e8ef', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.67rem', color: '#697386' }}>분석 대상: <strong style={{ color: '#425466' }}>{report.metadata.totalDefects}건</strong></span>
+              <span style={{ fontSize: '0.67rem', color: '#697386' }}>처리 완료율: <strong style={{ color: '#425466' }}>{report.metadata.completionRate}%</strong></span>
+              <span style={{ fontSize: '0.67rem', color: '#697386' }}>총 처리 비용: <strong style={{ color: '#425466' }}>{fmtKRW(report.metadata.totalCost)}</strong></span>
+              <span style={{ fontSize: '0.67rem', color: '#697386' }}>분석 방식: <strong style={{ color: '#635bff' }}>Rule-Based (LLM 교체 가능)</strong></span>
+            </div>
+
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
