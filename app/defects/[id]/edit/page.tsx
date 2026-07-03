@@ -18,27 +18,27 @@ export default function EditDefectPage() {
   const { state, updateDefect, saveFloorImage } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
 
-  const defect = state.defects.find(d => d.id === parseInt(id))
+  const defectRaw = state.defects.find(d => d.id === parseInt(id))
 
   const [form, setForm] = useState(() => ({
-    title: defect?.title ?? '',
-    description: defect?.description ?? '',
-    buildingId: defect?.buildingId ?? 1,
-    floorPlanId: defect?.floorPlanId ?? (state.floorPlans[0]?.id || 1),
-    locationX: defect?.locationX ?? null as number | null,
-    locationY: defect?.locationY ?? null as number | null,
-    locationText: defect?.locationText ?? '',
-    categoryId: defect?.categoryId ?? ('' as string | number),
-    severity: defect?.severity ?? 'medium',
-    status: defect?.status ?? 'open',
-    costType: defect?.costType ?? 'our',
-    reporterName: defect?.reporterName ?? '',
-    assignedVendorId: defect?.assignedVendorId ?? ('' as string | number),
-    managerName: defect?.managerName ?? '김관리',
-    firstOccurredAt: defect?.firstOccurredAt ?? new Date().toISOString().slice(0, 10),
+    title: defectRaw?.title ?? '',
+    description: defectRaw?.description ?? '',
+    buildingId: defectRaw?.buildingId ?? 1,
+    floorPlanId: defectRaw?.floorPlanId ?? (state.floorPlans[0]?.id || 1),
+    locationX: defectRaw?.locationX ?? null as number | null,
+    locationY: defectRaw?.locationY ?? null as number | null,
+    locationText: defectRaw?.locationText ?? '',
+    categoryId: defectRaw?.categoryId ?? ('' as string | number),
+    severity: defectRaw?.severity ?? 'medium',
+    status: defectRaw?.status ?? 'open',
+    costType: defectRaw?.costType ?? 'our',
+    reporterName: defectRaw?.reporterName ?? '',
+    assignedVendorId: defectRaw?.assignedVendorId ?? ('' as string | number),
+    managerName: defectRaw?.managerName ?? '김관리',
+    firstOccurredAt: defectRaw?.firstOccurredAt ?? new Date().toISOString().slice(0, 10),
   }))
 
-  if (!defect) {
+  if (!defectRaw) {
     return (
       <div style={{ padding: 52, textAlign: 'center', color: '#697386' }}>
         <i className="fa-solid fa-inbox" style={{ fontSize: '1.8rem', display: 'block', marginBottom: 10 }} />
@@ -47,6 +47,7 @@ export default function EditDefectPage() {
       </div>
     )
   }
+  const defect = defectRaw
 
   const floorPlans = state.floorPlans.filter(f => f.buildingId === form.buildingId)
 
