@@ -8,6 +8,7 @@ import type { AiAnalysisResult } from '@/lib/aiAnalysisService'
 import { estimateCost } from '@/lib/costPredictionService'
 import type { CostPrediction } from '@/lib/costPredictionService'
 import { formatKRW } from '@/lib/format'
+import { compressImage } from '@/lib/imageCompress'
 
 const CONFIDENCE_COLORS: Record<string, { bg: string; text: string }> = {
   낮음: { bg: '#f3f5f7', text: '#697386' },
@@ -25,8 +26,9 @@ const RISK_COLORS: Record<string, { bg: string; text: string; border: string }> 
 
 export default function NewDefectPage() {
   const router = useRouter()
-  const { state, addDefectAndGetId, saveFloorImage } = useStore()
+  const { state, addDefectAndGetId, saveFloorImage, addFile } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const [photoFiles, setPhotoFiles] = useState<File[]>([])
 
   const [form, setForm] = useState({
     title: '',
@@ -89,7 +91,18 @@ export default function NewDefectPage() {
     e.target.value = ''
   }
 
-  function submit() {
+  function onPhotoFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = e.target.files
+    if (!selected) return
+    setPhotoFiles(prev => [...prev, ...Array.from(selected)])
+    e.target.value = ''
+  }
+
+  function removePhotoFile(idx: number) {
+    setPhotoFiles(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  async function submit() {
     if (!form.title.trim()) { alert('제목을 입력하세요.'); return }
     const id = addDefectAndGetId({
       title: form.title,
@@ -118,6 +131,10 @@ export default function NewDefectPage() {
       predictedCostMax: costPrediction?.estimatedCostMax ?? null,
       predictionConfidence: costPrediction?.confidence ?? null,
     })
+    for (const file of photoFiles) {
+      const dataUrl = await compressImage(file)
+      addFile({ defectId: id, photoType: 'before', fileName: file.name, fileType: file.type, dataUrl })
+    }
     router.push(`/defects/${id}`)
   }
 
@@ -437,6 +454,37 @@ export default function NewDefectPage() {
                     선택 좌표: ({form.locationX}%, {form.locationY}%)
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* 사진 첨부 */}
+            <div style={card}>
+              <div style={{ padding: '12px 18px', background: '#fafbfc', borderBottom: '1px solid #f0f4f8' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#425466' }}>사진 첨부 (선택, 조치전)</div>
+              </div>
+              <div style={{ padding: 18 }}>
+                <label style={{
+                  cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontSize: '0.75rem', color: '#635bff', fontWeight: 600,
+                  padding: '7px 12px', border: '1.5px solid #635bff', borderRadius: 7,
+                }}>
+                  <i className="fa-solid fa-camera" /> 사진 선택
+                  <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onPhotoFilesSelected} />
+                </label>
+                {photoFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                    {photoFiles.map((f, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f7fa', borderRadius: 6, padding: '4px 8px' }}>
+                        <span style={{ fontSize: '.7rem', color: '#425466' }}>{f.name}</span>
+                        <button type="button" onClick={() => removePhotoFile(idx)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b0bac6', fontSize: '.7rem' }}>
+                          <i className="fa-solid fa-xmark" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p style={{ fontSize: '.68rem', color: '#b0bac6', marginTop: 10 }}>등록 후에도 상세 페이지에서 조치전/조치후/기타 사진을 계속 추가할 수 있습니다.</p>
               </div>
             </div>
           </div>

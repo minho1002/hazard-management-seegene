@@ -75,6 +75,18 @@ export interface DefectLog {
   occurredAt: string
 }
 
+export type PhotoType = 'before' | 'after' | 'other'
+
+export interface DefectFile {
+  id: number
+  defectId: number
+  photoType: PhotoType
+  fileName: string
+  fileType: string
+  dataUrl: string
+  uploadedAt: string
+}
+
 export interface AppState {
   categories: Category[]
   vendors: Vendor[]
@@ -83,6 +95,7 @@ export interface AppState {
   floorPlanImages: Record<number, string>
   defects: Defect[]
   logs: DefectLog[]
+  files: DefectFile[]
 }
 
 // ── SEED DATA ─────────────────────────────────────────────────────────────
@@ -114,6 +127,7 @@ const SEED: AppState = {
     { id: 9, buildingId: 1, name: 'RF층', order: 9 },
   ],
   floorPlanImages: {},
+  files: [],
   defects: [
     { id: 1, caseNumber: 'DEF-2024-001', title: '지하1층 주차장 누수', description: '주차장 천장에서 물이 새고 있음. 비가 올 때마다 심해짐', buildingId: 1, floorPlanId: 2, locationX: 35.5, locationY: 60.2, locationText: '지하1층 주차장 A구역', categoryId: 1, severity: 'high', status: 'in_progress', costType: 'gukbo', reporterName: '홍길동(시설팀)', assignedVendorId: 1, managerName: '김관리', recurrenceCount: 2, firstOccurredAt: '2024-03-15', lastOccurredAt: '2024-11-20', totalCost: 850000, createdAt: '2026-04-16' },
     { id: 2, caseNumber: 'DEF-2024-002', title: '3층 전기실 분전반 이상', description: '분전반에서 이상 소음 발생, 주기적 점검 필요', buildingId: 1, floorPlanId: 5, locationX: 70, locationY: 30, locationText: '3층 전기실', categoryId: 2, severity: 'critical', status: 'completed', costType: 'our', reporterName: '이시설(시설팀)', assignedVendorId: 3, managerName: '김관리', recurrenceCount: 0, firstOccurredAt: '2024-04-10', lastOccurredAt: '2024-09-05', totalCost: 1200000, createdAt: '2026-04-16' },
@@ -150,6 +164,7 @@ function loadState(): AppState {
     if (s) {
       const parsed = JSON.parse(s) as AppState
       if (!parsed.floorPlanImages) parsed.floorPlanImages = {}
+      if (!parsed.files) parsed.files = []
       // Merge new floor plans from SEED in case they are missing
       SEED.floorPlans.forEach(fp => {
         if (!parsed.floorPlans.find(f => f.id === fp.id)) parsed.floorPlans.push(fp)
@@ -291,6 +306,23 @@ export function useStore() {
     })
   }, [])
 
+  const addFile = useCallback((data: Omit<DefectFile, 'id' | 'uploadedAt'>) => {
+    setState(prev => {
+      const file: DefectFile = { ...data, id: nextId(prev.files), uploadedAt: new Date().toISOString() }
+      const next = { ...prev, files: [...prev.files, file] }
+      persistState(next)
+      return next
+    })
+  }, [])
+
+  const deleteFile = useCallback((id: number) => {
+    setState(prev => {
+      const next = { ...prev, files: prev.files.filter(f => f.id !== id) }
+      persistState(next)
+      return next
+    })
+  }, [])
+
   return {
     state,
     addDefect,
@@ -299,6 +331,8 @@ export function useStore() {
     deleteDefect,
     addLog,
     saveFloorImage,
+    addFile,
+    deleteFile,
     saveState: (s: AppState) => save(s),
   }
 }

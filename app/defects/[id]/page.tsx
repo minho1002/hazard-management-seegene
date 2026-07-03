@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
+import DefectPhotos from '@/components/defects/DefectPhotos'
 
 const SEV_LABELS: Record<string, string> = { low: '낮음', medium: '보통', high: '높음', critical: '긴급' }
 const AI_RISK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -135,6 +136,12 @@ export default function DefectDetailPage() {
             <option value="completed">완료</option>
           </select>
           <button
+            onClick={() => router.push(`/defects/${defect.id}/edit`)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}
+          >
+            <i className="fa-solid fa-pen" /> 수정
+          </button>
+          <button
             onClick={handleDeleteDefect}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #fecdd3', background: '#fef0f4', color: '#be1044', fontFamily: 'inherit' }}
           >
@@ -264,6 +271,9 @@ export default function DefectDetailPage() {
                 {defect.locationX != null ? `좌표 (${defect.locationX}%, ${defect.locationY}%) — ${defect.locationText || ''}` : '위치 좌표 미설정'}
               </div>
             </div>
+
+            {/* Photos & files */}
+            <DefectPhotos defectId={defect.id} />
           </div>
 
           {/* Right: Timeline */}
