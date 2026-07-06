@@ -10,6 +10,7 @@ import {
 import { Doughnut, Bar, Line } from 'react-chartjs-2'
 import * as XLSX from 'xlsx'
 import { useStore } from '@/lib/store'
+import { toLegacyBucket, STATUS_META } from '@/lib/designTokens'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Tooltip, Legend, Filler)
 
@@ -61,7 +62,9 @@ const SEV_CONFIG = [
   { key: 'low',      label: '낮음', color: '#697386' },
 ]
 const SEV_LABELS: Record<string, string> = { critical: '긴급', high: '높음', medium: '보통', low: '낮음' }
-const STAT_LABELS: Record<string, string> = { open: '접수', in_progress: '처리중', hold: '보류', completed: '완료' }
+const STAT_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(STATUS_META).map(([key, meta]) => [key, meta.label])
+)
 
 const PERIODS = [
   { key: 'this_month', label: '이번 달' },
@@ -181,7 +184,7 @@ function computeReportParams(data: ApiData, from: string, to: string): ReportPar
   }))
   const sevOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
   const actionItems = data.defects
-    .filter(d => d.status === 'open' || d.status === 'in_progress')
+    .filter(d => toLegacyBucket(d.status) === 'open' || toLegacyBucket(d.status) === 'in_progress')
     .sort((a, b) => (sevOrder[a.severity] ?? 3) - (sevOrder[b.severity] ?? 3))
   return {
     from, to,
@@ -324,12 +327,12 @@ function buildStandaloneHTML(p: ReportParams): string {
 
 // ── Build ApiData from localStorage ────────────────────────────────────────
 function buildApiData(state: ReturnType<typeof useStore>['state'], from: string, to: string): ApiData {
-  const filtered = state.defects.filter(d => d.firstOccurredAt && d.firstOccurredAt >= from && d.firstOccurredAt <= to)
+  const filtered = state.defects.filter(d => !d.deletedAt && d.firstOccurredAt && d.firstOccurredAt >= from && d.firstOccurredAt <= to)
   const total = filtered.length
-  const open = filtered.filter(d => d.status === 'open').length
-  const inProgress = filtered.filter(d => d.status === 'in_progress').length
-  const hold = filtered.filter(d => d.status === 'hold').length
-  const completed = filtered.filter(d => d.status === 'completed').length
+  const open = filtered.filter(d => toLegacyBucket(d.status) === 'open').length
+  const inProgress = filtered.filter(d => toLegacyBucket(d.status) === 'in_progress').length
+  const hold = filtered.filter(d => toLegacyBucket(d.status) === 'hold').length
+  const completed = filtered.filter(d => toLegacyBucket(d.status) === 'completed').length
   const totalCost = filtered.reduce((s, d) => s + (d.totalCost || 0), 0)
 
   const byCategory = state.categories.map(c => ({

@@ -12,7 +12,7 @@ import { Bar, Line } from 'react-chartjs-2'
 import { useStore } from '@/lib/store'
 import PriorityStatCard from '@/components/ui/PriorityStatCard'
 import EmptyState from '@/components/ui/EmptyState'
-import { needsTodayAction, isOverdue, isRecurring, COLORS } from '@/lib/designTokens'
+import { needsTodayAction, isOverdue, isRecurring, COLORS, toLegacyBucket } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
@@ -26,7 +26,7 @@ export default function DashboardPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const isTablet = useMediaQuery('(max-width: 1024px)')
 
-  const defects = state.defects
+  const defects = state.defects.filter(d => !d.deletedAt)
   const totalCost = defects.reduce((s, d) => s + (d.totalCost || 0), 0)
 
   const todayItems = defects.filter(d => needsTodayAction(d))
@@ -109,10 +109,10 @@ export default function DashboardPage() {
   const forecast12m = Math.round(avgMonthly * 12 + pendingPredCost * 1.2)
 
   const total = defects.length
-  const open = defects.filter(d => d.status === 'open').length
-  const inProg = defects.filter(d => d.status === 'in_progress').length
-  const hold = defects.filter(d => d.status === 'hold').length
-  const done = defects.filter(d => d.status === 'completed').length
+  const open = defects.filter(d => toLegacyBucket(d.status) === 'open').length
+  const inProg = defects.filter(d => toLegacyBucket(d.status) === 'in_progress').length
+  const hold = defects.filter(d => toLegacyBucket(d.status) === 'hold').length
+  const done = defects.filter(d => toLegacyBucket(d.status) === 'completed').length
   const recurred = defects.filter(d => d.recurrenceCount > 0).length
   const now = new Date()
   const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`

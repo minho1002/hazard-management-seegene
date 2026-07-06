@@ -8,7 +8,7 @@ import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import DefectPhotos from '@/components/defects/DefectPhotos'
 import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
-import { isOverdue, isRecurring, COLORS } from '@/lib/designTokens'
+import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 
 const AI_RISK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -37,7 +37,7 @@ function fmtKRW(n: number | null | undefined) {
 export default function DefectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, updateDefect, deleteDefect, addLog, saveFloorImage } = useStore()
+  const { state, updateDefectStatus, softDeleteDefect, addLog, saveFloorImage } = useStore()
   const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const [showLogModal, setShowLogModal] = useState(false)
@@ -48,6 +48,8 @@ export default function DefectDetailPage() {
     content: '',
     costAmount: '',
   })
+  const [showActionDoneModal, setShowActionDoneModal] = useState(false)
+  const [actionDoneForm, setActionDoneForm] = useState({ actionContent: '', actualCost: '' })
 
   const defectRaw = state.defects.find(d => d.id === parseInt(id))
   if (!defectRaw) {
@@ -66,15 +68,43 @@ export default function DefectDetailPage() {
   const floor = state.floorPlans.find(f => f.id === defect.floorPlanId)
   const building = state.buildings.find(b => b.id === defect.buildingId)
   const logs = state.logs.filter(l => l.defectId === defect.id).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime())
+  const statusHistory = state.statusHistory
+    .filter(h => h.defectId === defect.id)
+    .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
 
   const floorSvg = state.floorPlanImages[defect.floorPlanId ?? 0]
     ? `<img src="${state.floorPlanImages[defect.floorPlanId ?? 0]}" style="width:100%;height:auto;display:block">`
     : (FLOOR_SVGS[defect.floorPlanId ?? 1] || FLOOR_SVGS[1])
 
   function handleDeleteDefect() {
-    if (!confirm('이 하자를 삭제하시겠습니까?')) return
-    deleteDefect(defect.id)
+    const reason = prompt('삭제 사유를 입력하세요.')
+    if (reason == null) return
+    if (!reason.trim()) { alert('삭제 사유를 입력해야 합니다.'); return }
+    softDeleteDefect(defect.id, reason.trim(), defect.managerName ?? null)
     router.push('/defects')
+  }
+
+  function applyStatusChange(target: StatusKey, opts?: { actionContent?: string; actualCost?: string }): boolean {
+    const result = updateDefectStatus(defect.id, target, {
+      changedBy: defect.managerName ?? null,
+      actionContent: opts?.actionContent || null,
+      actualCost: opts?.actualCost ? Number(opts.actualCost) : null,
+    })
+    if (!result.ok) { alert(result.error); return false }
+    return true
+  }
+
+  function handleStatusSelect(target: string) {
+    if (target === 'action_done') {
+      setActionDoneForm({ actionContent: defect.lastActionContent ?? '', actualCost: '' })
+      setShowActionDoneModal(true)
+      return
+    }
+    applyStatusChange(target as StatusKey)
+  }
+
+  function submitActionDone() {
+    if (applyStatusChange('action_done', actionDoneForm)) setShowActionDoneModal(false)
   }
 
   function handleFloorImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -121,12 +151,11 @@ export default function DefectDetailPage() {
           <select
             style={ssStyle}
             value={defect.status}
-            onChange={e => updateDefect(defect.id, { status: e.target.value })}
+            onChange={e => handleStatusSelect(e.target.value)}
           >
-            <option value="open">접수</option>
-            <option value="in_progress">처리중</option>
-            <option value="hold">보류</option>
-            <option value="completed">완료</option>
+            {STATUS_FLOW.map(s => (
+              <option key={s} value={s}>{STATUS_META[s].label}</option>
+            ))}
           </select>
           <button
             onClick={() => router.push(`/defects/${defect.id}/edit`)}
@@ -290,7 +319,8 @@ export default function DefectDetailPage() {
             <DefectPhotos defectId={defect.id} />
           </div>
 
-          {/* Right: Timeline */}
+          {/* Right: Timeline + 상태 변경 이력 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div style={{ ...card, height: 'fit-content' }}>
             <div style={{ padding: '14px 18px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>처리 이력</h3>
@@ -328,6 +358,33 @@ export default function DefectDetailPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* 상태 변경 이력 */}
+          <div style={{ ...card, height: 'fit-content' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f0f4f8' }}>
+              <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>상태 변경 이력</h3>
+            </div>
+            <div style={{ padding: '4px 18px 18px' }}>
+              {statusHistory.length === 0 ? (
+                <p style={{ color: '#697386', fontSize: '0.78rem', textAlign: 'center', padding: 20 }}>상태 변경 이력이 없습니다.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10 }}>
+                  {statusHistory.map(h => (
+                    <div key={h.id} style={{ fontSize: '0.75rem', color: '#425466' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#697386', marginBottom: 2 }}>{fmtDT(h.changedAt)}</div>
+                      <div>
+                        <span style={{ fontWeight: 600, color: '#0a2540' }}>{STATUS_META[h.fromStatus as StatusKey]?.label ?? h.fromStatus}</span>
+                        {' → '}
+                        <span style={{ fontWeight: 600, color: '#0a2540' }}>{STATUS_META[h.toStatus as StatusKey]?.label ?? h.toStatus}</span>
+                      </div>
+                      {h.reason && <div style={{ fontSize: '0.7rem', color: '#697386', marginTop: 2 }}>{h.reason}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           </div>
         </div>
       </div>
@@ -370,6 +427,34 @@ export default function DefectDetailPage() {
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowLogModal(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}>취소</button>
               <button onClick={submitLog} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #635bff', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 조치완료 전환 모달 */}
+      {showActionDoneModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(10,37,64,.42)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowActionDoneModal(false) }}
+        >
+          <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 430, maxWidth: '94vw', boxShadow: '0 8px 28px rgba(10,37,64,.13)', border: '1px solid #e3e8ef' }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0a2540', marginBottom: 4 }}>조치완료 처리</div>
+            <div style={{ fontSize: '0.72rem', color: '#697386', marginBottom: 16 }}>조치 내용, 실제 비용, 조치 후 사진이 있어야 조치완료로 전환할 수 있습니다.</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>조치 내용 *</label>
+                <textarea style={{ ...modalInputStyle, resize: 'vertical', lineHeight: 1.6 }} rows={3} placeholder="예: 우레탄 방수 보강 시공 완료" value={actionDoneForm.actionContent} onChange={e => setActionDoneForm(f => ({ ...f, actionContent: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>실제 비용 (원) *</label>
+                <input type="number" style={modalInputStyle} placeholder="0" value={actionDoneForm.actualCost} onChange={e => setActionDoneForm(f => ({ ...f, actualCost: e.target.value }))} />
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#697386' }}>조치 후 사진은 아래 "사진 / 첨부파일" 영역의 "조치후" 섹션에서 먼저 업로드해주세요.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowActionDoneModal(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}>취소</button>
+              <button onClick={submitActionDone} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #635bff', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}>조치완료로 전환</button>
             </div>
           </div>
         </div>

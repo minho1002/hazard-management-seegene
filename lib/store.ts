@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { getStatusTransitionError, type StatusKey } from '@/lib/designTokens'
+import { CURRENT_ROLE } from '@/lib/permissions'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export interface Category {
@@ -63,6 +65,51 @@ export interface Defect {
   predictedCostMax?: number | null
   predictionConfidence?: string | null
   predictionErrorRate?: number | null
+  // 하자구분 / 귀책 판단 (Phase 1 신규)
+  defectType?: '하자사항' | '일반사항' | '확인 필요'
+  responsibilityType?: string | null
+  costBearer?: string | null
+  reviewStatus?: '미검토' | '검토중' | '확정' | '이견있음' | '분쟁가능' | '재검토필요'
+  costApprovalStatus?: '미승인' | '승인대기' | '승인완료' | '반려' | '협의중'
+  aiClassification?: {
+    defectType?: string
+    responsibilityType?: string
+    costBearer?: string
+    confidence?: string
+    reasoning?: string
+    suggestedAt?: string
+  } | null
+  lastActionContent?: string | null
+  // Soft Delete (Phase 1 신규)
+  deletedAt?: string | null
+  deletedBy?: string | null
+  deleteReason?: string | null
+  // 생애주기 확장 필드 (Phase 2 신규)
+  facilityName?: string | null
+  facilityId?: string | null
+  zone?: string | null
+  roomName?: string | null
+  department?: string | null
+  expectedCompletionDate?: string | null
+  estimatedCost?: number | null
+}
+
+export interface DefectStatusHistory {
+  id: number
+  defectId: number
+  fromStatus: string
+  toStatus: string
+  changedBy: string | null
+  changedAt: string
+  reason: string | null
+}
+
+export interface DefectDeleteLog {
+  id: number
+  defectId: number
+  deletedBy: string | null
+  deletedAt: string
+  reason: string
 }
 
 export interface DefectLog {
@@ -96,6 +143,8 @@ export interface AppState {
   defects: Defect[]
   logs: DefectLog[]
   files: DefectFile[]
+  statusHistory: DefectStatusHistory[]
+  deleteLogs: DefectDeleteLog[]
 }
 
 // ── SEED DATA ─────────────────────────────────────────────────────────────
@@ -128,6 +177,8 @@ const SEED: AppState = {
   ],
   floorPlanImages: {},
   files: [],
+  statusHistory: [],
+  deleteLogs: [],
   defects: [
     { id: 1, caseNumber: 'DEF-2024-001', title: '지하1층 주차장 누수', description: '주차장 천장에서 물이 새고 있음. 비가 올 때마다 심해짐', buildingId: 1, floorPlanId: 2, locationX: 35.5, locationY: 60.2, locationText: '지하1층 주차장 A구역', categoryId: 1, severity: 'high', status: 'in_progress', costType: 'gukbo', reporterName: '홍길동(시설팀)', assignedVendorId: 1, managerName: '김관리', recurrenceCount: 2, firstOccurredAt: '2024-03-15', lastOccurredAt: '2024-11-20', totalCost: 850000, createdAt: '2026-04-16' },
     { id: 2, caseNumber: 'DEF-2024-002', title: '3층 전기실 분전반 이상', description: '분전반에서 이상 소음 발생, 주기적 점검 필요', buildingId: 1, floorPlanId: 5, locationX: 70, locationY: 30, locationText: '3층 전기실', categoryId: 2, severity: 'critical', status: 'completed', costType: 'our', reporterName: '이시설(시설팀)', assignedVendorId: 3, managerName: '김관리', recurrenceCount: 0, firstOccurredAt: '2024-04-10', lastOccurredAt: '2024-09-05', totalCost: 1200000, createdAt: '2026-04-16' },
@@ -165,6 +216,8 @@ function loadState(): AppState {
       const parsed = JSON.parse(s) as AppState
       if (!parsed.floorPlanImages) parsed.floorPlanImages = {}
       if (!parsed.files) parsed.files = []
+      if (!parsed.statusHistory) parsed.statusHistory = []
+      if (!parsed.deleteLogs) parsed.deleteLogs = []
       // Merge new floor plans from SEED in case they are missing
       SEED.floorPlans.forEach(fp => {
         if (!parsed.floorPlans.find(f => f.id === fp.id)) parsed.floorPlans.push(fp)
@@ -218,6 +271,9 @@ export function useStore() {
         recurrenceCount: 0,
         totalCost: 0,
         createdAt: new Date().toISOString().slice(0, 10),
+        defectType: data.defectType ?? '확인 필요',
+        reviewStatus: data.reviewStatus ?? '미검토',
+        costApprovalStatus: data.costApprovalStatus ?? '미승인',
       }
       const next = { ...prev, defects: [...prev.defects, defect] }
       persistState(next)
@@ -234,6 +290,9 @@ export function useStore() {
       recurrenceCount: 0,
       totalCost: 0,
       createdAt: new Date().toISOString().slice(0, 10),
+      defectType: data.defectType ?? '확인 필요',
+      reviewStatus: data.reviewStatus ?? '미검토',
+      costApprovalStatus: data.costApprovalStatus ?? '미승인',
     }
     const next = { ...current, defects: [...current.defects, defect] }
     persistState(next)
@@ -252,16 +311,88 @@ export function useStore() {
     })
   }, [])
 
-  const deleteDefect = useCallback((id: number) => {
+  const softDeleteDefect = useCallback((id: number, reason: string, deletedBy: string | null) => {
     setState(prev => {
-      const next = {
+      const deletedAt = new Date().toISOString()
+      const deleteLog: DefectDeleteLog = { id: nextId(prev.deleteLogs), defectId: id, deletedBy, deletedAt, reason }
+      const next: AppState = {
         ...prev,
-        defects: prev.defects.filter(d => d.id !== id),
-        logs: prev.logs.filter(l => l.defectId !== id),
+        defects: prev.defects.map(d => d.id === id ? { ...d, deletedAt, deletedBy, deleteReason: reason } : d),
+        deleteLogs: [...prev.deleteLogs, deleteLog],
       }
       persistState(next)
       return next
     })
+  }, [])
+
+  const restoreDefect = useCallback((id: number) => {
+    setState(prev => {
+      const next: AppState = {
+        ...prev,
+        defects: prev.defects.map(d => d.id === id ? { ...d, deletedAt: null, deletedBy: null, deleteReason: null } : d),
+      }
+      persistState(next)
+      return next
+    })
+  }, [])
+
+  const updateDefectStatus = useCallback((id: number, target: StatusKey, opts: {
+    changedBy: string | null
+    reason?: string | null
+    actionContent?: string | null
+    actualCost?: number | null
+  }): { ok: boolean; error?: string } => {
+    const current = loadState()
+    const defect = current.defects.find(d => d.id === id)
+    if (!defect) return { ok: false, error: '하자를 찾을 수 없습니다.' }
+
+    const error = getStatusTransitionError(defect, target, {
+      files: current.files,
+      role: CURRENT_ROLE,
+      actionContent: opts.actionContent,
+      actualCost: opts.actualCost,
+    })
+    if (error) return { ok: false, error }
+
+    let logs = current.logs
+    if (target === 'action_done' && opts.actionContent) {
+      logs = [...logs, {
+        id: nextId(logs),
+        defectId: id,
+        logType: 'action',
+        title: opts.actionContent,
+        content: null,
+        costAmount: opts.actualCost ?? null,
+        occurredAt: new Date().toISOString(),
+      }]
+    }
+    const totalCost = logs.filter(l => l.defectId === id && l.costAmount).reduce((s, l) => s + (l.costAmount || 0), 0)
+
+    const patch: Partial<Defect> = { status: target, totalCost }
+    if (opts.actionContent) patch.lastActionContent = opts.actionContent
+    if (totalCost > 0 && defect.predictedCostAvg && defect.predictionErrorRate == null) {
+      patch.predictionErrorRate = Math.round((Math.abs(totalCost - defect.predictedCostAvg) / totalCost) * 1000) / 10
+    }
+
+    const history: DefectStatusHistory = {
+      id: nextId(current.statusHistory),
+      defectId: id,
+      fromStatus: defect.status,
+      toStatus: target,
+      changedBy: opts.changedBy,
+      changedAt: new Date().toISOString(),
+      reason: opts.reason ?? null,
+    }
+
+    const next: AppState = {
+      ...current,
+      defects: current.defects.map(d => d.id === id ? { ...d, ...patch } : d),
+      logs,
+      statusHistory: [...current.statusHistory, history],
+    }
+    persistState(next)
+    setState(next)
+    return { ok: true }
   }, [])
 
   const addLog = useCallback((logData: Omit<DefectLog, 'id'>) => {
@@ -328,7 +459,9 @@ export function useStore() {
     addDefect,
     addDefectAndGetId,
     updateDefect,
-    deleteDefect,
+    updateDefectStatus,
+    softDeleteDefect,
+    restoreDefect,
     addLog,
     saveFloorImage,
     addFile,

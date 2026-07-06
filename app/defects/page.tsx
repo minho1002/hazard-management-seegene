@@ -9,8 +9,9 @@ import type { SearchCondition } from '@/lib/searchParser'
 import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import EmptyState from '@/components/ui/EmptyState'
-import { isOverdue, isRecurring, needsTodayAction, COLORS } from '@/lib/designTokens'
+import { isOverdue, isRecurring, needsTodayAction, COLORS, STATUS_FLOW, STATUS_META } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
+import { canDelete, CURRENT_ROLE } from '@/lib/permissions'
 
 const COST_LABELS: Record<string, string> = { gukbo: '국보', our: '자체', claim: '청구' }
 
@@ -32,10 +33,13 @@ function DefectsPageInner() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [nlQuery, setNlQuery] = useState('')
   const [quickFilter, setQuickFilter] = useState<string | null>(urlFilter)
+  const [showDeleted, setShowDeleted] = useState(false)
+  const canSeeDeleted = canDelete(CURRENT_ROLE)
 
   const nlCondition: SearchCondition | null = nlQuery.trim() ? analyzeSearchQuery(nlQuery) : null
 
   const filtered = [...state.defects]
+    .filter(d => (canSeeDeleted && showDeleted) ? !!d.deletedAt : !d.deletedAt)
     .sort((a, b) => {
       if (nlCondition?.sortBy === 'recurrenceCount') return b.recurrenceCount - a.recurrenceCount
       if (nlCondition?.sortBy === 'totalCost') return b.totalCost - a.totalCost
@@ -215,10 +219,9 @@ function DefectsPageInner() {
           </div>
           <select style={selectStyle} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">전체 상태</option>
-            <option value="open">접수</option>
-            <option value="in_progress">처리중</option>
-            <option value="hold">보류</option>
-            <option value="completed">완료</option>
+            {STATUS_FLOW.map(s => (
+              <option key={s} value={s}>{STATUS_META[s].label}</option>
+            ))}
           </select>
           <select style={selectStyle} value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}>
             <option value="">전체 심각도</option>
@@ -237,6 +240,12 @@ function DefectsPageInner() {
           >
             초기화
           </span>
+          {canSeeDeleted && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#697386', cursor: 'pointer', marginLeft: 'auto' }}>
+              <input type="checkbox" checked={showDeleted} onChange={e => setShowDeleted(e.target.checked)} />
+              삭제됨 보기
+            </label>
+          )}
         </div>
 
         {/* Table */}

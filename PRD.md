@@ -1,6 +1,6 @@
 # PRD — 시설 하자관리 시스템 (AI 고도화)
 **Product Requirements Document**
-작성일: 2026-04-28 | 최종수정: 2026-06-10 | 작성: 시설관리팀 | 버전: 3.0
+작성일: 2026-04-28 | 최종수정: 2026-07-06 | 작성: 시설관리팀 | 버전: 4.0
 
 ---
 
@@ -12,6 +12,7 @@
 | 1.1 | 2026-05-20 | 도면 업로드, AI 어시스턴트 기능 명세 추가 |
 | 2.0 | 2026-06-09 | AI 고도화 6단계 구현 반영 (3.6~3.8 신규, 데이터 모델 확장) |
 | 3.0 | 2026-06-10 | Stage 7 AI 대시보드 인사이트 위젯(3.1 갱신), Stage 8 AI 보고서 생성(3.9~3.10 신규) 반영 |
+| 4.0 | 2026-07-06 | 관제형 UI/UX 개선(완료) + 2차 고도화 9단계 착수 반영. 데이터 모델에 생애주기/귀책판단/Soft Delete 필드 추가. 상세는 [10. 하자관리 2차 고도화 진행 현황](#10-하자관리-2차-고도화-진행-현황-2026-07-06) 참조 |
 
 ---
 
@@ -474,6 +475,29 @@ interface Defect {
   predictedCostMax?: number | null
   predictionConfidence?: string | null  // 낮음|중간|높음
   predictionErrorRate?: number | null   // % (실제비용 확정 후 자동 계산)
+
+  // ── 하자구분/귀책판단 필드 (v4.0 신규, 선택적 — BR-16) ──
+  defectType?: '하자사항' | '일반사항' | '확인 필요'
+  responsibilityType?: string | null
+  costBearer?: string | null
+  reviewStatus?: '미검토' | '검토중' | '확정' | '이견있음' | '분쟁가능' | '재검토필요'
+  costApprovalStatus?: '미승인' | '승인대기' | '승인완료' | '반려' | '협의중'
+  aiClassification?: { defectType?: string; responsibilityType?: string; costBearer?: string; confidence?: string; reasoning?: string; suggestedAt?: string } | null
+  lastActionContent?: string | null
+
+  // ── Soft Delete 필드 (v4.0 신규, 선택적 — BR-13) ──
+  deletedAt?: string | null
+  deletedBy?: string | null
+  deleteReason?: string | null
+
+  // ── 생애주기 확장 필드 (v4.0 신규, 선택적 — BR-13) ──
+  facilityName?: string | null
+  facilityId?: string | null
+  zone?: string | null
+  roomName?: string | null
+  department?: string | null
+  expectedCompletionDate?: string | null
+  estimatedCost?: number | null
 }
 
 // DefectLog (기존 유지)
@@ -486,7 +510,29 @@ interface DefectLog {
   costAmount: number | null
   occurredAt: string
 }
+
+// DefectStatusHistory (v4.0 신규 — BR-13, AppState.statusHistory)
+interface DefectStatusHistory {
+  id: number
+  defectId: number
+  fromStatus: string
+  toStatus: string
+  changedBy: string | null
+  changedAt: string
+  reason: string | null
+}
+
+// DefectDeleteLog (v4.0 신규 — BR-13, AppState.deleteLogs)
+interface DefectDeleteLog {
+  id: number
+  defectId: number
+  deletedBy: string | null
+  deletedAt: string
+  reason: string
+}
 ```
+
+> **`status` 필드 값 확장 (v4.0)**: 기존 `open|in_progress|hold|completed` 4값에서 `open|reviewing|assigned|in_progress|action_done|recheck_needed|hold|completed` 8값으로 확장(`lib/designTokens.ts`의 `StatusKey`/`STATUS_FLOW`). 기존 대시보드·보고서 집계 로직과의 하위 호환을 위해 `toLegacyBucket(status)`로 4버킷 매핑을 제공한다.
 
 > **하위 호환**: AI 필드는 모두 `?: string | null` 또는 `?: number | null`로 선언되어 기존 시드 데이터 및 AI 분석 없이 등록된 하자에 영향이 없다.
 
@@ -504,6 +550,9 @@ lib/
   format.ts                 # formatKRW 등 포맷 유틸
   floorSvgs.ts              # 층별 SVG 도면 데이터
   gemini.ts                 # Gemini API 초기화 (AI 어시스턴트)
+  designTokens.ts           # 색상/상태/심각도 토큰, 지연·반복 판정, 상태전환 검증  ← 관제형 UI/UX(1단계) + v4.0 확장
+  useMediaQuery.ts           # 반응형 브레이크포인트 훅                          ← 관제형 UI/UX(1단계) 신규
+  permissions.ts             # 역할 타입 + 권한 스텁 (로그인 없는 역할 전환기)    ← v4.0 신규 (BR-19 8단계에서 UI 완성)
 
 app/
   api/ai/analyze/route.ts   # POST /api/ai/analyze (AI 분석 API)
@@ -605,3 +654,48 @@ AI 어시스턴트
 - [x] **Stage 8** — 다운로드 stub (PDF/Excel/Word — "준비 중" 안내)
 - [x] **Stage 8** — `lib/aiReportService.ts` Service 계층 분리, LLM 전환 stub 주석 포함
 - [x] 기존 `/reports` 페이지 변경 없음 (Excel/PDF/Word/인쇄 기능 유지)
+
+---
+
+## 10. 하자관리 2차 고도화 진행 현황 (2026-07-06)
+
+원본 요구사항: `하자관리 시스템 개선(프롬프트)(260706).docx` (9단계). 실행 계획/로드맵 원본: `C:\Users\신민호\.claude\plans\quizzical-munching-thacker.md`.
+
+### 10.1 9단계 로드맵 현황
+
+| # | 단계 | 상태 | 비고 |
+|---|---|---|---|
+| 1 | 관제형 UI/UX | ✅ 완료 | `feature/facility-control-room-uiux` 브랜치 병합 완료 (13개 커밋) |
+| 2 | 하자 생애주기 프로세스 (BR-13) | 🟡 진행 중 | 아래 10.2 참조 — 코드 작성 완료, 브라우저 검증 미실시, 미커밋 |
+| 3 | 사진/파일 첨부 고도화 (BR-14) | 🔴 착수 전 | 현재 조치전/조치후/기타 3종만 지원 |
+| 4 | 도면 다중위치 마커 (BR-15) | 🔴 착수 전 | 현재 단일 좌표(`locationX/Y`)만 지원 |
+| 5 | 하자구분/귀책판단 (BR-16) | 🟡 착수 중 | `Defect` 타입 필드까지만 반영, UI/기본값 로직 없음 |
+| 6 | 대시보드 KPI/AI인사이트 고도화 (BR-17) | 🟡 부분 | 1단계 우선순위 배너 + BR-11 6위젯이 이미 있어 일부 중복 |
+| 7 | 집계현황/반복분석 메뉴 (BR-18) | 🔴 착수 전 | 전용 메뉴·기간필터·`recurringGroup` 구조 없음 |
+| 8 | 보고서 고도화/권한관리/감사이력 (BR-19) | 🔴 착수 전 | `lib/permissions.ts` 스텁만 존재 |
+| 9 | 최종 QA (BR-20) | 🔴 대기 | 1~8단계 완료 후 진행 |
+
+권장 순서: **2 → 5 → 3 → 4 → 6 → 7 → 8 → 9** (문서 원순서에서 5단계만 앞당김 — 2·5단계가 같은 파일을 다루기 때문).
+
+### 10.2 2단계(BR-13) 구현 내역 — 2026-07-06
+
+**변경/신규 파일**
+| 파일 | 변경 내용 |
+|---|---|
+| `lib/store.ts` | `Defect`에 생애주기 필드 추가, `AppState`에 `statusHistory`/`deleteLogs` 배열 추가(+`loadState` 마이그레이션), `addDefect`/`addDefectAndGetId` 기본값(`defectType`/`reviewStatus`/`costApprovalStatus`) 설정, `updateDefectStatus()` 신규(상태전환 검증+이력저장+비용/이력 반영), `deleteDefect()` 제거 → `softDeleteDefect()`/`restoreDefect()` 신규 |
+| `lib/designTokens.ts` | `StatusKey` 8값 확장(기존 작업분), `STATUS_FLOW` 순서 배열 신규, `getStatusTransitionError()` 신규(조치완료 필수값·최종완료 권한 검증) |
+| `lib/permissions.ts` (신규) | `Role` 타입, `CURRENT_ROLE` 스텁(현재 `'관리자'` 고정), `canFinalize()`/`canDelete()` |
+| `app/defects/new/page.tsx` | 신규 필드(설비명/설비ID/구역/실명/담당부서/예상완료일/예상처리비용) 입력란 추가, 필수값(하자명/발생위치/카테고리/심각도/상세설명) 검증 확장 |
+| `app/defects/[id]/page.tsx` | 상태 select를 `STATUS_FLOW` 8옵션으로 교체, 조치완료 전환 시 조치내용·실제비용 입력 모달 추가, 삭제를 사유 입력 후 `softDeleteDefect` 호출로 교체, "상태 변경 이력" 섹션 신규 |
+| `app/defects/page.tsx` | 기본 목록 `!d.deletedAt` 필터, 관리자 전용 "삭제됨 보기" 토글, 상태 필터 드롭다운 8값으로 확장 |
+| `app/dashboard/page.tsx`, `app/reports/page.tsx` | `!d.deletedAt` 방어 필터 + 상태값 4버킷 집계를 `toLegacyBucket()` 기반으로 교체(신규 8값 상태가 KPI/보고서 집계에서 누락되는 회귀 방지) |
+
+**검증 상태**
+- `npx tsc --noEmit` 통과 확인.
+- **브라우저 수동 검증(등록→8단계 상태 전환→조치완료 필수값 차단 확인→소프트삭제→"삭제됨 보기" 확인) 미실시** — 익일 최우선 진행.
+- git 커밋 전 상태(`app/dashboard, app/defects/*, app/reports, lib/designTokens.ts, lib/store.ts` 수정 + `lib/permissions.ts` 신규, 미커밋).
+
+### 10.3 내일 이어서 할 일
+1. `npm run dev`로 브라우저 수동 검증 (계획 파일의 검증 체크리스트 그대로 수행).
+2. 검증 통과 시 git 커밋.
+3. 5단계(하자구분/귀책판단, BR-16) 상세 실행계획 수립 후 진행.

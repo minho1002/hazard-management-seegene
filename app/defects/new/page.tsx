@@ -47,6 +47,13 @@ export default function NewDefectPage() {
     assignedVendorId: '' as string | number,
     managerName: '김관리',
     firstOccurredAt: new Date().toISOString().slice(0, 10),
+    zone: '',
+    roomName: '',
+    facilityName: '',
+    facilityId: '',
+    department: '',
+    expectedCompletionDate: '',
+    estimatedCost: '',
   })
 
   const [aiMemo, setAiMemo] = useState('')
@@ -105,8 +112,21 @@ export default function NewDefectPage() {
     setPhotoFiles(prev => prev.filter((_, i) => i !== idx))
   }
 
+  function validate(): string | null {
+    if (!form.title.trim()) return '하자명을 입력하세요.'
+    if (!form.locationText.trim()) return '발생 위치(위치 설명)를 입력하세요.'
+    if (!form.categoryId) return '카테고리를 선택하세요.'
+    if (!form.severity) return '심각도를 선택하세요.'
+    if (!form.description.trim()) return '상세 설명을 입력하세요.'
+    if (form.expectedCompletionDate && form.firstOccurredAt && form.expectedCompletionDate < form.firstOccurredAt) {
+      return '예상 완료일은 발생일보다 이전일 수 없습니다.'
+    }
+    return null
+  }
+
   async function submit() {
-    if (!form.title.trim()) { alert('제목을 입력하세요.'); return }
+    const error = validate()
+    if (error) { alert(error); return }
     const id = addDefectAndGetId({
       title: form.title,
       description: form.description || null,
@@ -115,6 +135,13 @@ export default function NewDefectPage() {
       locationX: form.locationX,
       locationY: form.locationY,
       locationText: form.locationText || null,
+      zone: form.zone || null,
+      roomName: form.roomName || null,
+      facilityName: form.facilityName || null,
+      facilityId: form.facilityId || null,
+      department: form.department || null,
+      expectedCompletionDate: form.expectedCompletionDate || null,
+      estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : null,
       categoryId: form.categoryId ? Number(form.categoryId) : null,
       severity: form.severity,
       status: 'open',
@@ -216,18 +243,18 @@ export default function NewDefectPage() {
                     <input style={inputCls} placeholder="예: 3층 화장실 천장 누수" value={form.title} onChange={e => setField('title', e.target.value)} />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>설명</label>
+                    <label style={labelCls}>상세 설명 *</label>
                     <textarea style={{ ...inputCls, resize: 'vertical', lineHeight: 1.6 }} rows={2} placeholder="상세 내용..." value={form.description} onChange={e => setField('description', e.target.value)} />
                   </div>
                   <div>
-                    <label style={labelCls}>카테고리</label>
+                    <label style={labelCls}>카테고리 *</label>
                     <select style={selectCls} value={form.categoryId} onChange={e => setField('categoryId', e.target.value)}>
                       <option value="">선택</option>
                       {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={labelCls}>심각도</label>
+                    <label style={labelCls}>심각도 *</label>
                     <select style={selectCls} value={form.severity} onChange={e => setField('severity', e.target.value)}>
                       <option value="low">낮음</option>
                       <option value="medium">보통</option>
@@ -248,12 +275,32 @@ export default function NewDefectPage() {
                     <input type="date" style={inputCls} value={form.firstOccurredAt} onChange={e => setField('firstOccurredAt', e.target.value)} />
                   </div>
                   <div>
+                    <label style={labelCls}>예상 완료일</label>
+                    <input type="date" style={inputCls} value={form.expectedCompletionDate} onChange={e => setField('expectedCompletionDate', e.target.value)} />
+                  </div>
+                  <div>
                     <label style={labelCls}>신고자</label>
                     <input style={inputCls} placeholder="홍길동(시설팀)" value={form.reporterName} onChange={e => setField('reporterName', e.target.value)} />
                   </div>
                   <div>
                     <label style={labelCls}>담당자</label>
                     <input style={inputCls} value={form.managerName} onChange={e => setField('managerName', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>담당부서</label>
+                    <input style={inputCls} placeholder="예: 시설관리팀" value={form.department} onChange={e => setField('department', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>예상 처리비용 (원)</label>
+                    <input type="number" style={inputCls} placeholder="0" value={form.estimatedCost} onChange={e => setField('estimatedCost', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>설비명</label>
+                    <input style={inputCls} placeholder="예: 공조기 AHU-3" value={form.facilityName} onChange={e => setField('facilityName', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>설비 ID</label>
+                    <input style={inputCls} placeholder="예: AHU-3F-01" value={form.facilityId} onChange={e => setField('facilityId', e.target.value)} />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
                     <label style={labelCls}>협력업체</label>
@@ -316,8 +363,16 @@ export default function NewDefectPage() {
                       {floorPlans.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
                   </div>
+                  <div>
+                    <label style={labelCls}>구역</label>
+                    <input style={inputCls} placeholder="예: A구역" value={form.zone} onChange={e => setField('zone', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>실명</label>
+                    <input style={inputCls} placeholder="예: 201호 사무실" value={form.roomName} onChange={e => setField('roomName', e.target.value)} />
+                  </div>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>위치 설명</label>
+                    <label style={labelCls}>발생 위치(위치 설명) *</label>
                     <input style={inputCls} placeholder="예: 3층 남쪽 화장실 천장" value={form.locationText} onChange={e => setField('locationText', e.target.value)} />
                   </div>
                 </div>
