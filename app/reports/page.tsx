@@ -87,7 +87,7 @@ const RPT_CSS = `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}b
 .rpt-kpi-row{display:flex;gap:10px}
 .rpt-kpi{flex:1;border:1px solid #e3e8ef;border-radius:7px;padding:12px 10px;text-align:center;position:relative;overflow:hidden}
 .rpt-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
-.rpt-kpi.ka::before{background:#635bff}.rpt-kpi.kb::before{background:#1d6dc2}.rpt-kpi.kc::before{background:#e8960c}.rpt-kpi.kd::before{background:#0f7850}.rpt-kpi.ke::before{background:#be1044}
+.rpt-kpi.ka::before{background:#635bff}.rpt-kpi.kb::before{background:#1d6dc2}.rpt-kpi.kc::before{background:#e8960c}.rpt-kpi.kf::before{background:#a16207}.rpt-kpi.kd::before{background:#0f7850}.rpt-kpi.ke::before{background:#be1044}
 .rpt-kpi-lbl{font-size:7.5pt;font-weight:700;text-transform:uppercase;color:#697386;margin-bottom:6px}
 .rpt-kpi-v{font-size:18pt;font-weight:800;letter-spacing:-.03em;line-height:1}
 .rpt-kpi-u{font-size:7.5pt;color:#697386;margin-top:3px}
@@ -274,6 +274,7 @@ function buildA4HTML(p: ReportParams): string {
       <div class="rpt-kpi ka"><div class="rpt-kpi-lbl">전체</div><div class="rpt-kpi-v">${p.summary.total}</div><div class="rpt-kpi-u">건</div></div>
       <div class="rpt-kpi kb"><div class="rpt-kpi-lbl">접수</div><div class="rpt-kpi-v" style="color:#1d6dc2">${p.summary.open}</div><div class="rpt-kpi-u">건</div></div>
       <div class="rpt-kpi kc"><div class="rpt-kpi-lbl">처리중</div><div class="rpt-kpi-v" style="color:#b06b1a">${p.summary.inProgress}</div><div class="rpt-kpi-u">건</div></div>
+      <div class="rpt-kpi kf"><div class="rpt-kpi-lbl">보류</div><div class="rpt-kpi-v" style="color:#a16207">${p.summary.hold}</div><div class="rpt-kpi-u">건</div></div>
       <div class="rpt-kpi kd"><div class="rpt-kpi-lbl">완료</div><div class="rpt-kpi-v" style="color:#0f7850">${p.summary.completed}</div><div class="rpt-kpi-u">건</div></div>
       <div class="rpt-kpi ke"><div class="rpt-kpi-lbl">총 비용</div><div class="rpt-kpi-v" style="font-size:13pt;color:#be1044">${fmtKRW(p.summary.totalCost)}</div><div class="rpt-kpi-u">원</div></div>
     </div>
@@ -450,7 +451,7 @@ export default function ReportsPage() {
       [],
       ['구분', '건수'],
       ['전체', rp.summary.total], ['접수', rp.summary.open],
-      ['처리중', rp.summary.inProgress], ['완료', rp.summary.completed],
+      ['처리중', rp.summary.inProgress], ['보류', rp.summary.hold], ['완료', rp.summary.completed],
       ['총 비용(원)', rp.summary.totalCost],
       [],
       ['카테고리별 현황'],
@@ -490,6 +491,7 @@ export default function ReportsPage() {
   <div class="kbox"><div class="klbl">전체</div><div class="kv">${rp.summary.total}</div></div>
   <div class="kbox"><div class="klbl">접수</div><div class="kv" style="color:#1d6dc2">${rp.summary.open}</div></div>
   <div class="kbox"><div class="klbl">처리중</div><div class="kv" style="color:#b06b1a">${rp.summary.inProgress}</div></div>
+  <div class="kbox"><div class="klbl">보류</div><div class="kv" style="color:#a16207">${rp.summary.hold}</div></div>
   <div class="kbox"><div class="klbl">완료</div><div class="kv" style="color:#0f7850">${rp.summary.completed}</div></div>
   <div class="kbox"><div class="klbl">총 비용</div><div class="kv" style="font-size:11pt;color:#be1044">${fmtKRW(rp.summary.totalCost)}</div></div>
 </div>
@@ -626,12 +628,13 @@ ${rp.actionItems.length > 0 ? `<h2>조치 필요 사항</h2><table><thead><tr><t
 
         {rp && !loading && (
           <>
-            {/* 5-column KPI */}
-            <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(5,1fr)' }}>
+            {/* 6-column KPI */}
+            <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(6,1fr)' }}>
               {[
                 { label: '전체',   value: String(rp.summary.total),         color: '#635bff' },
                 { label: '접수',   value: String(rp.summary.open),          color: '#1d6dc2' },
                 { label: '처리중', value: String(rp.summary.inProgress),    color: '#b06b1a' },
+                { label: '보류',   value: String(rp.summary.hold),          color: '#a16207' },
                 { label: '완료',   value: String(rp.summary.completed),     color: '#0f7850' },
                 { label: '총 비용', value: fmtKRW(rp.summary.totalCost),   color: '#be1044', small: true },
               ].map(k => (
