@@ -277,7 +277,7 @@ export default function DashboardPage() {
 
         {todayItems.length === 0 && (
           <div style={{ marginBottom: 20 }}>
-            <EmptyState icon="fa-solid fa-circle-check" message="오늘 처리할 긴급·지연 항목이 없습니다." />
+            <EmptyState icon="fa-solid fa-circle-check" message="오늘 처리할 긴급·지연 항목이 없습니다." actionLabel="하자 등록" actionHref="/defects/new" />
           </div>
         )}
 
