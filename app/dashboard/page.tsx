@@ -440,7 +440,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Row A: 반복 발생 원인 TOP10 + 시설별 고장 순위 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Widget 1: 반복 발생 원인 TOP10 */}
             <div style={aiCard}>
               <div style={aiCardHeader}>
