@@ -271,7 +271,7 @@ export default function EditDefectPage() {
             <div style={{ background: 'rgba(99,91,255,.09)', border: '1px solid rgba(99,91,255,.2)', borderRadius: 12, padding: 16, marginBottom: 14 }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#635bff', marginBottom: 8 }}>수정 안내</div>
               <ul style={{ fontSize: '0.73rem', color: '#4f46e5', lineHeight: 2, listStyle: 'none' }}>
-                <li>• 상태(접수/처리중/완료)도 함께 변경할 수 있습니다</li>
+                <li>• 상태(접수/처리중/보류/완료)도 함께 변경할 수 있습니다</li>
                 <li>• 도면을 다시 클릭하면 위치가 이동합니다</li>
                 <li>• 사진 추가/삭제는 상세 페이지에서 진행합니다</li>
               </ul>

@@ -217,6 +217,7 @@ function DefectsPageInner() {
             <option value="">전체 상태</option>
             <option value="open">접수</option>
             <option value="in_progress">처리중</option>
+            <option value="hold">보류</option>
             <option value="completed">완료</option>
           </select>
           <select style={selectStyle} value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}>

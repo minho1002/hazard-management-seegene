@@ -111,6 +111,7 @@ export default function DashboardPage() {
   const total = defects.length
   const open = defects.filter(d => d.status === 'open').length
   const inProg = defects.filter(d => d.status === 'in_progress').length
+  const hold = defects.filter(d => d.status === 'hold').length
   const done = defects.filter(d => d.status === 'completed').length
   const recurred = defects.filter(d => d.recurrenceCount > 0).length
   const now = new Date()
@@ -302,7 +303,7 @@ export default function DashboardPage() {
             <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#697386', marginBottom: 10 }}>처리 진행중</div>
             <div style={{ fontSize: '2.1rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.04em', lineHeight: 1 }}>{inProg}</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 10 }}>
-              <span style={{ fontSize: '0.7rem', color: '#697386' }}>접수 포함 {open + inProg}건 미완료</span>
+              <span style={{ fontSize: '0.7rem', color: '#697386' }}>접수 포함 {open + inProg + hold}건 미완료</span>
               <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#FFF7ED', color: '#F97316' }}>{Math.round((inProg / Math.max(total, 1)) * 100)}%</span>
             </div>
           </div>
