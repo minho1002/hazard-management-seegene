@@ -9,6 +9,7 @@ import DefectPhotos from '@/components/defects/DefectPhotos'
 import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import { isOverdue, isRecurring, COLORS } from '@/lib/designTokens'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 const AI_RISK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   낮음: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
@@ -37,6 +38,7 @@ export default function DefectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const { state, updateDefect, deleteDefect, addLog, saveFloorImage } = useStore()
+  const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const [showLogModal, setShowLogModal] = useState(false)
   const [logForm, setLogForm] = useState({
@@ -179,7 +181,7 @@ export default function DefectDetailPage() {
         )}
 
         {/* Detail Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 18, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 360px', gap: 18, alignItems: 'start' }}>
 
           {/* Left */}
           <div>

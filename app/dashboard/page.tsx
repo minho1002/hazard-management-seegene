@@ -13,6 +13,7 @@ import { useStore } from '@/lib/store'
 import PriorityStatCard from '@/components/ui/PriorityStatCard'
 import EmptyState from '@/components/ui/EmptyState'
 import { needsTodayAction, isOverdue, isRecurring, COLORS } from '@/lib/designTokens'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
@@ -23,6 +24,7 @@ function fmtKRW(n: number) {
 export default function DashboardPage() {
   const { state } = useStore()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const defects = state.defects
   const totalCost = defects.reduce((s, d) => s + (d.totalCost || 0), 0)
@@ -234,7 +236,7 @@ export default function DashboardPage() {
       <div style={{ padding: '24px 32px' }}>
 
         {/* 우선순위 배너 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1.2fr', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? 'repeat(2,1fr)' : '1fr 1fr 1fr 1fr 1.2fr', gap: 12, marginBottom: 20 }}>
           <PriorityStatCard
             label="오늘 우선처리" icon="fa-solid fa-bolt" count={todayItems.length}
             color={COLORS.danger} bg="#FEF2F2" href="/defects?filter=today"
@@ -282,7 +284,7 @@ export default function DashboardPage() {
         )}
 
         {/* KPI Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
           {/* 전체 하자 */}
           <div style={{ ...card, padding: '18px 20px', position: 'relative' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#2563EB', borderRadius: '12px 12px 0 0' }} />
@@ -331,7 +333,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Row 1: Monthly trend + Category bars */}
-        <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 14, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '3fr 2fr', gap: 14, marginBottom: 14 }}>
           <div style={card}>
             <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div>
@@ -379,7 +381,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Row 2: Severity bars + Vendor cost */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
           <div style={card}>
             <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid #f0f4f8' }}>
               <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>심각도 분포</div>
@@ -513,7 +515,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Row B: 분야별 비용 분석 + 재발생 하자 분석 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Widget 3: 분야별 비용 분석 */}
             <div style={aiCard}>
               <div style={aiCardHeader}>
@@ -589,7 +591,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Row C: 취약 구역 분석 + 향후 예상 유지보수 비용 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14 }}>
             {/* Widget 5: 취약 구역 분석 */}
             <div style={aiCard}>
               <div style={aiCardHeader}>

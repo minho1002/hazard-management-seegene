@@ -10,6 +10,7 @@ import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import EmptyState from '@/components/ui/EmptyState'
 import { isOverdue, isRecurring, needsTodayAction, COLORS } from '@/lib/designTokens'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 const COST_LABELS: Record<string, string> = { gukbo: '국보', our: '자체', claim: '청구' }
 
@@ -23,6 +24,7 @@ function DefectsPageInner() {
   const searchParams = useSearchParams()
   const urlFilter = searchParams.get('filter')
   const { state } = useStore()
+  const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -238,6 +240,7 @@ function DefectsPageInner() {
 
         {/* Table */}
         <div style={{ ...card, overflow: 'hidden' }}>
+          <div style={{ overflowX: isTablet ? 'auto' : 'visible' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#fafbfc', borderBottom: '1px solid #e3e8ef' }}>
@@ -308,6 +311,7 @@ function DefectsPageInner() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>

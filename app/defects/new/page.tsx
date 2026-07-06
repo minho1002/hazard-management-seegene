@@ -9,6 +9,7 @@ import { estimateCost } from '@/lib/costPredictionService'
 import type { CostPrediction } from '@/lib/costPredictionService'
 import { formatKRW } from '@/lib/format'
 import { compressImage } from '@/lib/imageCompress'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 const CONFIDENCE_COLORS: Record<string, { bg: string; text: string }> = {
   낮음: { bg: '#f3f5f7', text: '#697386' },
@@ -28,6 +29,7 @@ export default function NewDefectPage() {
   const router = useRouter()
   const { state, addDefectAndGetId, saveFloorImage, addFile } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const isTablet = useMediaQuery('(max-width: 1024px)')
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
 
   const [form, setForm] = useState({
@@ -198,7 +200,7 @@ export default function NewDefectPage() {
       </div>
 
       <div style={{ padding: '24px 32px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 18, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 320px', gap: 18, alignItems: 'start' }}>
 
           {/* Left: Form */}
           <div>

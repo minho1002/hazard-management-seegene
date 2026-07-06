@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 const STATUS_OPTIONS = [
   { value: 'open', label: '접수' },
@@ -18,6 +19,7 @@ export default function EditDefectPage() {
   const router = useRouter()
   const { state, updateDefect, saveFloorImage } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const defectRaw = state.defects.find(d => d.id === parseInt(id))
 
@@ -133,7 +135,7 @@ export default function EditDefectPage() {
       </div>
 
       <div style={{ padding: '24px 32px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 18, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 320px', gap: 18, alignItems: 'start' }}>
 
           {/* Left: Form */}
           <div>
