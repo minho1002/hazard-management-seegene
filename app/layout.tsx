@@ -47,6 +47,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             --open-bg: #EFF6FF;
             --prog: #F97316;
             --prog-bg: #FFF7ED;
+            --hold: #EAB308;
+            --hold-bg: #FEFCE8;
             --done: #16A34A;
             --done-bg: #F0FDF4;
             --crit: #B91C1C;
