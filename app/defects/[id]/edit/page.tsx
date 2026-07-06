@@ -9,6 +9,7 @@ import { FLOOR_SVGS } from '@/lib/floorSvgs'
 const STATUS_OPTIONS = [
   { value: 'open', label: '접수' },
   { value: 'in_progress', label: '처리중' },
+  { value: 'hold', label: '보류' },
   { value: 'completed', label: '완료' },
 ]
 

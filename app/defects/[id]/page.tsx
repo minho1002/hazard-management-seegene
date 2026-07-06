@@ -6,25 +6,15 @@ import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import DefectPhotos from '@/components/defects/DefectPhotos'
+import StatusBadge from '@/components/ui/StatusBadge'
+import SeverityBadge from '@/components/ui/SeverityBadge'
+import { isOverdue, isRecurring, COLORS } from '@/lib/designTokens'
 
-const SEV_LABELS: Record<string, string> = { low: '낮음', medium: '보통', high: '높음', critical: '긴급' }
 const AI_RISK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   낮음: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
   중: { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
   높음: { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
   긴급: { bg: '#fff1f2', text: '#be123c', border: '#fecdd3' },
-}
-const SEV_STYLE: Record<string, React.CSSProperties> = {
-  low: { background: '#f3f5f7', color: '#697386' },
-  medium: { background: '#fefae8', color: '#9a6c00' },
-  high: { background: '#fef3ee', color: '#c2440c' },
-  critical: { background: '#fef0f4', color: '#be1044' },
-}
-const STAT_LABELS: Record<string, string> = { open: '접수', in_progress: '처리중', completed: '완료' }
-const STAT_STYLE: Record<string, React.CSSProperties> = {
-  open: { background: '#ebf3fe', color: '#1d6dc2' },
-  in_progress: { background: '#fef3e2', color: '#b06b1a' },
-  completed: { background: '#e6f6f0', color: '#0f7850' },
 }
 const COST_LABELS: Record<string, string> = { gukbo: '국보', our: '자체', claim: '청구' }
 const LOG_LABELS: Record<string, string> = { occurrence: '발생', inspection: '점검', action: '조치', recurrence: '재발' }
@@ -133,6 +123,7 @@ export default function DefectDetailPage() {
           >
             <option value="open">접수</option>
             <option value="in_progress">처리중</option>
+            <option value="hold">보류</option>
             <option value="completed">완료</option>
           </select>
           <button
@@ -155,8 +146,8 @@ export default function DefectDetailPage() {
         <div style={{ ...card, padding: '20px 24px', marginBottom: 18 }}>
           <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0a2540', marginBottom: 8 }}>{defect.title}</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 5, fontSize: '0.68rem', fontWeight: 600, ...(SEV_STYLE[defect.severity] || {}) }}>{SEV_LABELS[defect.severity]}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 5, fontSize: '0.68rem', fontWeight: 600, ...(STAT_STYLE[defect.status] || {}) }}>{STAT_LABELS[defect.status]}</span>
+            <SeverityBadge severity={defect.severity} />
+            <StatusBadge status={defect.status} />
             {cat && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 7px', borderRadius: 5, fontSize: '0.68rem', fontWeight: 600, background: cat.color + '18', color: cat.color }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color, flexShrink: 0, display: 'inline-block' }} />
@@ -165,6 +156,27 @@ export default function DefectDetailPage() {
             )}
           </div>
         </div>
+
+        {/* 판단 근거 */}
+        {(isOverdue(defect) || defect.recurrenceCount > 0 || defect.costType !== 'our') && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+            {isOverdue(defect) && (
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: COLORS.warning, background: '#FFF7ED', padding: '5px 10px', borderRadius: 999, border: '1px solid #FED7AA' }}>
+                🔶 지연 발생 ({defect.firstOccurredAt ? Math.floor((Date.now() - new Date(defect.firstOccurredAt).getTime()) / 86400000) : 0}일 경과)
+              </span>
+            )}
+            {isRecurring(defect) && (
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: COLORS.danger, background: '#FEF2F2', padding: '5px 10px', borderRadius: 999, border: '1px solid #FECACA' }}>
+                🔁 재발 {defect.recurrenceCount}회
+              </span>
+            )}
+            {defect.costType !== 'our' && (
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', background: '#F3F4F6', padding: '5px 10px', borderRadius: 999, border: '1px solid #E5E7EB' }}>
+                💰 {defect.costType === 'gukbo' ? '국보 부담' : '청구 대상'}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Detail Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 18, alignItems: 'start' }}>
