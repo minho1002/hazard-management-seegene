@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useMediaQuery } from '@/lib/useMediaQuery'
+import { useState } from 'react'
 
 const menuItems = [
   { href: '/dashboard', label: '대시보드', icon: 'fa-solid fa-table-cells-large' },
@@ -36,6 +38,8 @@ function NavItem({ href, label, icon, active }: { href: string; label: string; i
 
 export default function SideNav() {
   const path = usePathname()
+  const isMobile = useMediaQuery('(max-width: 900px)')
+  const [open, setOpen] = useState(false)
 
   const isActive = (href: string) => {
     if (href === '/defects')
@@ -46,10 +50,28 @@ export default function SideNav() {
   }
 
   return (
-    <aside
-      className="flex flex-col flex-shrink-0 sticky top-0 z-10"
-      style={{ width: 216, minHeight: '100vh', background: '#0d1f35' }}
-    >
+    <>
+      {isMobile && (
+        <button
+          onClick={() => setOpen(true)}
+          style={{ position: 'fixed', top: 12, left: 12, zIndex: 30, width: 36, height: 36, borderRadius: 8, background: '#0d1f35', color: '#fff', border: 'none', display: open ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <i className="fa-solid fa-bars" />
+        </button>
+      )}
+      {isMobile && open && (
+        <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 19 }} />
+      )}
+      <aside
+        className="flex flex-col flex-shrink-0 sticky top-0 z-10"
+        style={{
+          width: 216, minHeight: '100vh', background: '#0d1f35',
+          position: isMobile ? 'fixed' : 'sticky',
+          zIndex: 20,
+          transform: isMobile && !open ? 'translateX(-100%)' : 'translateX(0)',
+          transition: 'transform .2s ease',
+        }}
+      >
       {/* Brand */}
       <div
         className="flex items-center gap-2.5 px-4"
@@ -99,5 +121,6 @@ export default function SideNav() {
         <span style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.35)' }}>시설관리팀 운영중</span>
       </div>
     </aside>
+    </>
   )
 }

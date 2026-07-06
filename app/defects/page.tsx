@@ -1,25 +1,17 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { analyzeSearchQuery, hasConditions, fmtDateRange, SORT_BY_LABELS } from '@/lib/searchParser'
 import type { SearchCondition } from '@/lib/searchParser'
+import StatusBadge from '@/components/ui/StatusBadge'
+import SeverityBadge from '@/components/ui/SeverityBadge'
+import EmptyState from '@/components/ui/EmptyState'
+import { isOverdue, isRecurring, needsTodayAction, COLORS } from '@/lib/designTokens'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
-const SEV_LABELS: Record<string, string> = { low: '낮음', medium: '보통', high: '높음', critical: '긴급' }
-const SEV_CLASS: Record<string, { background: string; color: string }> = {
-  low: { background: '#f3f5f7', color: '#697386' },
-  medium: { background: '#fefae8', color: '#9a6c00' },
-  high: { background: '#fef3ee', color: '#c2440c' },
-  critical: { background: '#fef0f4', color: '#be1044' },
-}
-const STAT_LABELS: Record<string, string> = { open: '접수', in_progress: '처리중', completed: '완료' }
-const STAT_CLASS: Record<string, { background: string; color: string }> = {
-  open: { background: '#ebf3fe', color: '#1d6dc2' },
-  in_progress: { background: '#fef3e2', color: '#b06b1a' },
-  completed: { background: '#e6f6f0', color: '#0f7850' },
-}
 const COST_LABELS: Record<string, string> = { gukbo: '국보', our: '자체', claim: '청구' }
 
 function fmtDate(s: string | null) {
@@ -27,15 +19,19 @@ function fmtDate(s: string | null) {
   return new Date(s).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-export default function DefectsPage() {
+function DefectsPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlFilter = searchParams.get('filter')
   const { state } = useStore()
+  const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [severityFilter, setSeverityFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [nlQuery, setNlQuery] = useState('')
+  const [quickFilter, setQuickFilter] = useState<string | null>(urlFilter)
 
   const nlCondition: SearchCondition | null = nlQuery.trim() ? analyzeSearchQuery(nlQuery) : null
 
@@ -46,6 +42,10 @@ export default function DefectsPage() {
       return b.id - a.id
     })
     .filter(d => {
+      if (quickFilter === 'today' && !needsTodayAction(d)) return false
+      if (quickFilter === 'critical' && !(d.severity === 'critical' && d.status !== 'completed')) return false
+      if (quickFilter === 'overdue' && !isOverdue(d)) return false
+      if (quickFilter === 'recurring' && !(isRecurring(d) && d.status !== 'completed')) return false
       if (search && !d.title.toLowerCase().includes(search.toLowerCase())) return false
       if (statusFilter && d.status !== statusFilter) return false
       if (severityFilter && d.severity !== severityFilter) return false
@@ -178,6 +178,29 @@ export default function DefectsPage() {
           )}
         </div>
 
+        {/* 퀵필터 칩 */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          {([
+            { key: 'today', label: '오늘 우선처리', color: COLORS.danger },
+            { key: 'critical', label: '긴급만', color: COLORS.critical },
+            { key: 'overdue', label: '지연만', color: COLORS.warning },
+            { key: 'recurring', label: '반복만', color: COLORS.action },
+          ] as const).map(f => (
+            <button
+              key={f.key}
+              onClick={() => setQuickFilter(quickFilter === f.key ? null : f.key)}
+              style={{
+                padding: '5px 12px', borderRadius: 999, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                border: `1.5px solid ${quickFilter === f.key ? f.color : '#E5E7EB'}`,
+                background: quickFilter === f.key ? f.color : '#fff',
+                color: quickFilter === f.key ? '#fff' : '#374151',
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         {/* Filter Row */}
         <div style={{ ...card, padding: '11px 16px', marginBottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
@@ -194,6 +217,7 @@ export default function DefectsPage() {
             <option value="">전체 상태</option>
             <option value="open">접수</option>
             <option value="in_progress">처리중</option>
+            <option value="hold">보류</option>
             <option value="completed">완료</option>
           </select>
           <select style={selectStyle} value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}>
@@ -209,7 +233,7 @@ export default function DefectsPage() {
           </select>
           <span
             style={{ fontSize: '0.75rem', color: '#b0bac6', cursor: 'pointer', padding: '2px 6px' }}
-            onClick={() => { setSearch(''); setStatusFilter(''); setSeverityFilter(''); setCategoryFilter(''); setNlQuery('') }}
+            onClick={() => { setSearch(''); setStatusFilter(''); setSeverityFilter(''); setCategoryFilter(''); setNlQuery(''); setQuickFilter(null) }}
           >
             초기화
           </span>
@@ -217,6 +241,7 @@ export default function DefectsPage() {
 
         {/* Table */}
         <div style={{ ...card, overflow: 'hidden' }}>
+          <div style={{ overflowX: isTablet ? 'auto' : 'visible' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#fafbfc', borderBottom: '1px solid #e3e8ef' }}>
@@ -228,19 +253,17 @@ export default function DefectsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: 52, textAlign: 'center', color: '#697386' }}>
-                    <i className="fa-solid fa-inbox" style={{ fontSize: '1.8rem', display: 'block', marginBottom: 10, opacity: 0.35 }} />
-                    <p style={{ fontSize: '0.82rem' }}>등록된 하자가 없습니다.</p>
+                  <td colSpan={8}>
+                    <EmptyState icon="fa-solid fa-inbox" message="등록된 하자가 없습니다." actionLabel="하자 등록" actionHref="/defects/new" />
                   </td>
                 </tr>
               ) : filtered.map(d => {
                 const cat = state.categories.find(c => c.id === d.categoryId)
-                const sev = SEV_CLASS[d.severity] || { background: '#f3f5f7', color: '#697386' }
-                const sta = STAT_CLASS[d.status] || { background: '#f3f5f7', color: '#697386' }
+                const overdue = isOverdue(d)
                 return (
                   <tr
                     key={d.id}
-                    style={{ borderBottom: '1px solid #f0f4f8', cursor: 'pointer', transition: 'background 0.1s' }}
+                    style={{ borderBottom: '1px solid #f0f4f8', cursor: 'pointer', transition: 'background 0.1s', borderLeft: overdue ? `3px solid ${COLORS.warning}` : '3px solid transparent' }}
                     onClick={() => router.push(`/defects/${d.id}`)}
                     onMouseEnter={e => (e.currentTarget.style.background = '#fafbff')}
                     onMouseLeave={e => (e.currentTarget.style.background = '')}
@@ -273,10 +296,13 @@ export default function DefectsPage() {
                       ) : '-'}
                     </td>
                     <td style={{ padding: '11px 16px', verticalAlign: 'middle' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 5, fontSize: '0.68rem', fontWeight: 600, ...sev }}>{SEV_LABELS[d.severity]}</span>
+                      <SeverityBadge severity={d.severity} />
                     </td>
-                    <td style={{ padding: '11px 16px', verticalAlign: 'middle' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 5, fontSize: '0.68rem', fontWeight: 600, ...sta }}>{STAT_LABELS[d.status]}</span>
+                    <td style={{ padding: '11px 16px', verticalAlign: 'middle', display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <StatusBadge status={d.status} />
+                      {overdue && (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: COLORS.warning, background: '#FFF7ED', padding: '1px 6px', borderRadius: 4 }}>지연</span>
+                      )}
                     </td>
                     <td style={{ padding: '11px 16px', verticalAlign: 'middle', fontSize: '0.75rem', color: '#697386' }}>{d.locationText || '-'}</td>
                     <td style={{ padding: '11px 16px', verticalAlign: 'middle', fontSize: '0.75rem', color: '#697386' }}>{COST_LABELS[d.costType] || d.costType}</td>
@@ -286,8 +312,17 @@ export default function DefectsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function DefectsPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, color: '#6B7280', fontSize: '.9rem' }}>로딩 중...</div>}>
+      <DefectsPageInner />
+    </Suspense>
   )
 }

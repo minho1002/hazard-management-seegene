@@ -5,10 +5,12 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 const STATUS_OPTIONS = [
   { value: 'open', label: '접수' },
   { value: 'in_progress', label: '처리중' },
+  { value: 'hold', label: '보류' },
   { value: 'completed', label: '완료' },
 ]
 
@@ -17,6 +19,7 @@ export default function EditDefectPage() {
   const router = useRouter()
   const { state, updateDefect, saveFloorImage } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const defectRaw = state.defects.find(d => d.id === parseInt(id))
 
@@ -132,7 +135,7 @@ export default function EditDefectPage() {
       </div>
 
       <div style={{ padding: '24px 32px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 18, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 320px', gap: 18, alignItems: 'start' }}>
 
           {/* Left: Form */}
           <div>
@@ -268,7 +271,7 @@ export default function EditDefectPage() {
             <div style={{ background: 'rgba(99,91,255,.09)', border: '1px solid rgba(99,91,255,.2)', borderRadius: 12, padding: 16, marginBottom: 14 }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#635bff', marginBottom: 8 }}>수정 안내</div>
               <ul style={{ fontSize: '0.73rem', color: '#4f46e5', lineHeight: 2, listStyle: 'none' }}>
-                <li>• 상태(접수/처리중/완료)도 함께 변경할 수 있습니다</li>
+                <li>• 상태(접수/처리중/보류/완료)도 함께 변경할 수 있습니다</li>
                 <li>• 도면을 다시 클릭하면 위치가 이동합니다</li>
                 <li>• 사진 추가/삭제는 상세 페이지에서 진행합니다</li>
               </ul>

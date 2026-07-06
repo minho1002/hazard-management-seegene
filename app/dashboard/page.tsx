@@ -10,6 +10,10 @@ import {
 } from 'chart.js'
 import { Bar, Line } from 'react-chartjs-2'
 import { useStore } from '@/lib/store'
+import PriorityStatCard from '@/components/ui/PriorityStatCard'
+import EmptyState from '@/components/ui/EmptyState'
+import { needsTodayAction, isOverdue, isRecurring, COLORS } from '@/lib/designTokens'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
@@ -20,99 +24,15 @@ function fmtKRW(n: number) {
 export default function DashboardPage() {
   const { state } = useStore()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const defects = state.defects
-  const total = defects.length
-  const open = defects.filter(d => d.status === 'open').length
-  const inProg = defects.filter(d => d.status === 'in_progress').length
-  const done = defects.filter(d => d.status === 'completed').length
   const totalCost = defects.reduce((s, d) => s + (d.totalCost || 0), 0)
-  const recurred = defects.filter(d => d.recurrenceCount > 0).length
-  const now = new Date()
-  const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const thisMonth = defects.filter(d => d.createdAt && d.createdAt.startsWith(mm)).length
-  const updatedAt = now.toLocaleString('ko-KR')
 
-  // Last 12 months
-  const months: string[] = []
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(); d.setMonth(d.getMonth() - i)
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-  const monthlyCounts = months.map(m => defects.filter(d => d.firstOccurredAt && d.firstOccurredAt.startsWith(m)).length)
-  const peakIdx = monthlyCounts.indexOf(Math.max(...monthlyCounts))
-  const peakLabel = months[peakIdx]?.slice(5) + '월'
-
-  // Category bars
-  const catTotal = total || 1
-  const catData = state.categories.map(c => ({
-    ...c,
-    count: defects.filter(d => d.categoryId === c.id).length,
-  }))
-
-  // Severity bars
-  const sevCfg = [
-    { key: 'critical', label: '긴급', color: '#be1044' },
-    { key: 'high', label: '높음', color: '#c2440c' },
-    { key: 'medium', label: '보통', color: '#9a6c00' },
-    { key: 'low', label: '낮음', color: '#697386' },
-  ]
-  const sevTotal = total || 1
-
-  // Vendor cost
-  const vendorCosts = state.vendors.map(v => ({
-    name: v.name,
-    cost: defects.filter(d => d.assignedVendorId === v.id).reduce((s, d) => s + (d.totalCost || 0), 0),
-  }))
-
-  // Monthly chart with gradient (need canvas ctx)
-  const monthlyChartData = {
-    labels: months.map(m => m.slice(5) + '월'),
-    datasets: [{
-      data: monthlyCounts,
-      borderColor: '#635bff',
-      backgroundColor: 'rgba(99,91,255,0.12)',
-      fill: true,
-      tension: 0.4,
-      pointRadius: 3,
-      pointBackgroundColor: '#635bff',
-      pointBorderColor: '#fff',
-      pointBorderWidth: 2,
-      borderWidth: 2,
-    }],
-  }
-
-  const vendorChartData = {
-    labels: vendorCosts.map(v => v.name),
-    datasets: [{
-      data: vendorCosts.map(v => v.cost),
-      backgroundColor: 'rgba(99,91,255,.7)',
-      borderRadius: 4,
-      borderSkipped: false as const,
-    }],
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const lineOpts: any = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: { parsed: { y: number } }) => `${ctx.parsed.y}건` } } },
-    scales: {
-      x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#b0bac6', maxTicksLimit: 6 } },
-      y: { beginAtZero: true, grid: { color: '#f0f4f8' }, ticks: { stepSize: 1, font: { size: 10 }, color: '#b0bac6' } },
-    },
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const barOpts: any = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: { parsed: { y: number } }) => fmtKRW(ctx.parsed.y) } } },
-    scales: {
-      x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#b0bac6' } },
-      y: { beginAtZero: true, grid: { color: '#f0f4f8' }, ticks: { font: { size: 10 }, color: '#b0bac6', callback: (v: number | string) => v ? `${(Number(v) / 10000).toFixed(0)}만` : 0 } },
-    },
-  }
+  const todayItems = defects.filter(d => needsTodayAction(d))
+  const criticalItems = defects.filter(d => d.severity === 'critical' && d.status !== 'completed')
+  const overdueItems = defects.filter(d => isOverdue(d))
+  const recurringItems = defects.filter(d => isRecurring(d) && d.status !== 'completed')
 
   // ── AI 분석 인사이트 데이터 ──────────────────────────────────────────────
 
@@ -188,6 +108,98 @@ export default function DashboardPage() {
   const forecast6m = Math.round(avgMonthly * 6 + pendingPredCost * 0.8)
   const forecast12m = Math.round(avgMonthly * 12 + pendingPredCost * 1.2)
 
+  const total = defects.length
+  const open = defects.filter(d => d.status === 'open').length
+  const inProg = defects.filter(d => d.status === 'in_progress').length
+  const hold = defects.filter(d => d.status === 'hold').length
+  const done = defects.filter(d => d.status === 'completed').length
+  const recurred = defects.filter(d => d.recurrenceCount > 0).length
+  const now = new Date()
+  const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const thisMonth = defects.filter(d => d.createdAt && d.createdAt.startsWith(mm)).length
+  const updatedAt = now.toLocaleString('ko-KR')
+
+  // Last 12 months
+  const months: string[] = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(); d.setMonth(d.getMonth() - i)
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  const monthlyCounts = months.map(m => defects.filter(d => d.firstOccurredAt && d.firstOccurredAt.startsWith(m)).length)
+  const peakIdx = monthlyCounts.indexOf(Math.max(...monthlyCounts))
+  const peakLabel = months[peakIdx]?.slice(5) + '월'
+
+  // Category bars
+  const catTotal = total || 1
+  const catData = state.categories.map(c => ({
+    ...c,
+    count: defects.filter(d => d.categoryId === c.id).length,
+  }))
+
+  // Severity bars
+  const sevCfg = [
+    { key: 'critical', label: '긴급', color: '#B91C1C' },
+    { key: 'high', label: '높음', color: '#DC2626' },
+    { key: 'medium', label: '보통', color: '#CA8A04' },
+    { key: 'low', label: '낮음', color: '#6B7280' },
+  ]
+  const sevTotal = total || 1
+
+  // Vendor cost
+  const vendorCosts = state.vendors.map(v => ({
+    name: v.name,
+    cost: defects.filter(d => d.assignedVendorId === v.id).reduce((s, d) => s + (d.totalCost || 0), 0),
+  }))
+
+  // Monthly chart with gradient (need canvas ctx)
+  const monthlyChartData = {
+    labels: months.map(m => m.slice(5) + '월'),
+    datasets: [{
+      data: monthlyCounts,
+      borderColor: '#2563EB',
+      backgroundColor: 'rgba(37,99,235,0.12)',
+      fill: true,
+      tension: 0.4,
+      pointRadius: 3,
+      pointBackgroundColor: '#2563EB',
+      pointBorderColor: '#fff',
+      pointBorderWidth: 2,
+      borderWidth: 2,
+    }],
+  }
+
+  const vendorChartData = {
+    labels: vendorCosts.map(v => v.name),
+    datasets: [{
+      data: vendorCosts.map(v => v.cost),
+      backgroundColor: 'rgba(37,99,235,.7)',
+      borderRadius: 4,
+      borderSkipped: false as const,
+    }],
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lineOpts: any = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: { parsed: { y: number } }) => `${ctx.parsed.y}건` } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#b0bac6', maxTicksLimit: 6 } },
+      y: { beginAtZero: true, grid: { color: '#f0f4f8' }, ticks: { stepSize: 1, font: { size: 10 }, color: '#b0bac6' } },
+    },
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const barOpts: any = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: { parsed: { y: number } }) => fmtKRW(ctx.parsed.y) } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#b0bac6' } },
+      y: { beginAtZero: true, grid: { color: '#f0f4f8' }, ticks: { font: { size: 10 }, color: '#b0bac6', callback: (v: number | string) => v ? `${(Number(v) / 10000).toFixed(0)}만` : 0 } },
+    },
+  }
+
   const card = { background: '#fff', border: '1px solid #e3e8ef', borderRadius: 12, boxShadow: '0 1px 3px rgba(10,37,64,0.06)', overflow: 'hidden' as const }
   const aiCard = { background: '#fff', border: '1px solid rgba(99,91,255,.2)', borderRadius: 12, boxShadow: '0 1px 4px rgba(99,91,255,.07)', overflow: 'hidden' as const }
   const aiCardHeader = { padding: '14px 16px 10px', borderBottom: '1px solid rgba(99,91,255,.1)', background: 'linear-gradient(135deg,rgba(99,91,255,.04),rgba(99,91,255,.01))' }
@@ -224,11 +236,59 @@ export default function DashboardPage() {
       {/* Body */}
       <div style={{ padding: '24px 32px' }}>
 
+        {/* 우선순위 배너 */}
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? 'repeat(2,1fr)' : '1fr 1fr 1fr 1fr 1.2fr', gap: 12, marginBottom: 20 }}>
+          <PriorityStatCard
+            label="오늘 우선처리" icon="fa-solid fa-bolt" count={todayItems.length}
+            color={COLORS.danger} bg="#FEF2F2" href="/defects?filter=today"
+            description="지연·긴급·반복 포함"
+          />
+          <PriorityStatCard
+            label="긴급 하자" icon="fa-solid fa-triangle-exclamation" count={criticalItems.length}
+            color={COLORS.critical} bg="#FEF2F2" href="/defects?filter=critical"
+          />
+          <PriorityStatCard
+            label="지연 하자" icon="fa-solid fa-clock" count={overdueItems.length}
+            color={COLORS.warning} bg="#FFF7ED" href="/defects?filter=overdue"
+          />
+          <PriorityStatCard
+            label="반복 하자" icon="fa-solid fa-rotate" count={recurringItems.length}
+            color={COLORS.action} bg="#EFF6FF" href="/defects?filter=recurring"
+          />
+          {/* AI 인사이트 요약 */}
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 13 }}>✨</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#111827' }}>AI 인사이트 요약</span>
+            </div>
+            {topCauses.length === 0 && floorRanking.length === 0 ? (
+              <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>분석할 데이터가 아직 없습니다.</span>
+            ) : (
+              <>
+                {topCauses[0] && (
+                  <div style={{ fontSize: '0.72rem', color: '#374151' }}>최다 반복원인: <strong>{topCauses[0][0]}</strong></div>
+                )}
+                {floorRanking[0] && (
+                  <div style={{ fontSize: '0.72rem', color: '#374151' }}>최고 위험구역: <strong>{floorRanking[0].name}</strong></div>
+                )}
+                <div style={{ fontSize: '0.72rem', color: '#374151' }}>3개월 비용예측: <strong>{fmtKRW(forecast3m)}</strong></div>
+              </>
+            )}
+            <a href="#ai-insight-section" style={{ fontSize: '0.68rem', color: '#2563EB', marginTop: 4, textDecoration: 'none' }}>전체 인사이트 보기 →</a>
+          </div>
+        </div>
+
+        {todayItems.length === 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <EmptyState icon="fa-solid fa-circle-check" message="오늘 처리할 긴급·지연 항목이 없습니다." actionLabel="하자 등록" actionHref="/defects/new" />
+          </div>
+        )}
+
         {/* KPI Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
           {/* 전체 하자 */}
           <div style={{ ...card, padding: '18px 20px', position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#635bff', borderRadius: '12px 12px 0 0' }} />
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#2563EB', borderRadius: '12px 12px 0 0' }} />
             <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#697386', marginBottom: 10 }}>전체 하자</div>
             <div style={{ fontSize: '2.1rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.04em', lineHeight: 1 }}>{total}</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 10 }}>
@@ -239,29 +299,29 @@ export default function DashboardPage() {
 
           {/* 처리 진행중 */}
           <div style={{ ...card, padding: '18px 20px', position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#e8960c', borderRadius: '12px 12px 0 0' }} />
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#F97316', borderRadius: '12px 12px 0 0' }} />
             <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#697386', marginBottom: 10 }}>처리 진행중</div>
             <div style={{ fontSize: '2.1rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.04em', lineHeight: 1 }}>{inProg}</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 10 }}>
-              <span style={{ fontSize: '0.7rem', color: '#697386' }}>접수 포함 {open + inProg}건 미완료</span>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#fef3e2', color: '#b06b1a' }}>{Math.round((inProg / Math.max(total, 1)) * 100)}%</span>
+              <span style={{ fontSize: '0.7rem', color: '#697386' }}>접수 포함 {open + inProg + hold}건 미완료</span>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#FFF7ED', color: '#F97316' }}>{Math.round((inProg / Math.max(total, 1)) * 100)}%</span>
             </div>
           </div>
 
           {/* 처리 완료 */}
           <div style={{ ...card, padding: '18px 20px', position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#0f7850', borderRadius: '12px 12px 0 0' }} />
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#16A34A', borderRadius: '12px 12px 0 0' }} />
             <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#697386', marginBottom: 10 }}>처리 완료</div>
             <div style={{ fontSize: '2.1rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.04em', lineHeight: 1 }}>{done}</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 10 }}>
               <span style={{ fontSize: '0.7rem', color: '#697386' }}>완료율</span>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#e6f6f0', color: '#0f7850' }}>{Math.round((done / Math.max(total, 1)) * 100)}%</span>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#F0FDF4', color: '#16A34A' }}>{Math.round((done / Math.max(total, 1)) * 100)}%</span>
             </div>
           </div>
 
           {/* 누적 처리비용 */}
           <div style={{ ...card, padding: '18px 20px', position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#1d6dc2', borderRadius: '12px 12px 0 0' }} />
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#2563EB', borderRadius: '12px 12px 0 0' }} />
             <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#697386', marginBottom: 10 }}>누적 처리비용</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.04em', lineHeight: 1 }}>
               {(totalCost / 10000).toFixed(0)}<span style={{ fontSize: '0.9rem', fontWeight: 600 }}>만원</span>
@@ -274,7 +334,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Row 1: Monthly trend + Category bars */}
-        <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 14, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '3fr 2fr', gap: 14, marginBottom: 14 }}>
           <div style={card}>
             <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div>
@@ -322,7 +382,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Row 2: Severity bars + Vendor cost */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
           <div style={card}>
             <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid #f0f4f8' }}>
               <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>심각도 분포</div>
@@ -368,7 +428,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ── AI 분석 인사이트 ──────────────────────────────────────────── */}
-        <div style={{ marginTop: 24 }}>
+        <div id="ai-insight-section" style={{ marginTop: 24 }}>
           {/* Section Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '12px 16px', background: 'linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,.03))', borderRadius: 12, border: '1px solid rgba(99,91,255,.18)' }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#635bff,#8b85ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -381,7 +441,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Row A: 반복 발생 원인 TOP10 + 시설별 고장 순위 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Widget 1: 반복 발생 원인 TOP10 */}
             <div style={aiCard}>
               <div style={aiCardHeader}>
@@ -456,7 +516,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Row B: 분야별 비용 분석 + 재발생 하자 분석 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Widget 3: 분야별 비용 분석 */}
             <div style={aiCard}>
               <div style={aiCardHeader}>
@@ -532,7 +592,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Row C: 취약 구역 분석 + 향후 예상 유지보수 비용 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14 }}>
             {/* Widget 5: 취약 구역 분석 */}
             <div style={aiCard}>
               <div style={aiCardHeader}>

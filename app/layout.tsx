@@ -29,40 +29,42 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             --sb-active: rgba(255,255,255,.1);
             --sb-text: rgba(255,255,255,.6);
             --sb-text-on: #fff;
-            --bg: #f5f7fa;
-            --surface: #fff;
-            --border: #e3e8ef;
-            --border-sub: #f0f4f8;
+            --bg: #F5F6F8;
+            --surface: #FFFFFF;
+            --border: #E5E7EB;
+            --border-sub: #F3F4F6;
             --shadow-xs: 0 1px 3px rgba(10,37,64,.06);
             --shadow-sm: 0 2px 8px rgba(10,37,64,.09);
             --shadow-md: 0 8px 28px rgba(10,37,64,.13);
-            --accent: #635bff;
-            --accent-dk: #4f46e5;
-            --accent-bg: rgba(99,91,255,.09);
-            --t1: #0a2540;
-            --t2: #425466;
-            --t3: #697386;
-            --t4: #b0bac6;
-            --open: #1d6dc2;
-            --open-bg: #ebf3fe;
-            --prog: #b06b1a;
-            --prog-bg: #fef3e2;
-            --done: #0f7850;
-            --done-bg: #e6f6f0;
-            --crit: #be1044;
-            --crit-bg: #fef0f4;
-            --high: #c2440c;
-            --high-bg: #fef3ee;
-            --med: #9a6c00;
-            --med-bg: #fefae8;
-            --low: #697386;
-            --low-bg: #f3f5f7;
+            --accent: #2563EB;
+            --accent-dk: #1D4ED8;
+            --accent-bg: rgba(37,99,235,.08);
+            --t1: #111827;
+            --t2: #374151;
+            --t3: #6B7280;
+            --t4: #9CA3AF;
+            --open: #1D4ED8;
+            --open-bg: #EFF6FF;
+            --prog: #F97316;
+            --prog-bg: #FFF7ED;
+            --hold: #EAB308;
+            --hold-bg: #FEFCE8;
+            --done: #16A34A;
+            --done-bg: #F0FDF4;
+            --crit: #B91C1C;
+            --crit-bg: #FEF2F2;
+            --high: #DC2626;
+            --high-bg: #FEF2F2;
+            --med: #CA8A04;
+            --med-bg: #FEFCE8;
+            --low: #6B7280;
+            --low-bg: #F9FAFB;
             --r: 8px;
             --r-lg: 12px;
           }
         `}</style>
       </head>
-      <body style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", background: '#f5f7fa', color: '#0a2540', fontSize: 14, lineHeight: 1.5 }}>
+      <body style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", background: '#F5F6F8', color: '#0a2540', fontSize: 14, lineHeight: 1.5 }}>
         <SideNav />
         <main style={{ flex: 1, minWidth: 0, overflowX: 'hidden' }}>
           {children}
