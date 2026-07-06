@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
@@ -18,7 +18,7 @@ function fmtDate(s: string | null) {
   return new Date(s).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-export default function DefectsPage() {
+function DefectsPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const urlFilter = searchParams.get('filter')
@@ -311,5 +311,13 @@ export default function DefectsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function DefectsPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, color: '#6B7280', fontSize: '.9rem' }}>로딩 중...</div>}>
+      <DefectsPageInner />
+    </Suspense>
   )
 }
