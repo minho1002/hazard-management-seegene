@@ -48,6 +48,7 @@ export default function NewDefectPage() {
   })
 
   const [aiMemo, setAiMemo] = useState('')
+  const [aiMemoExpanded, setAiMemoExpanded] = useState(false)
   const [aiAnalyzing, setAiAnalyzing] = useState(false)
   const [aiResult, setAiResult] = useState<AiAnalysisResult | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
@@ -201,13 +202,169 @@ export default function NewDefectPage() {
 
           {/* Left: Form */}
           <div>
+            {/* 기본 정보 */}
+            <div style={card}>
+              <div style={{ padding: '12px 18px', background: '#fafbfc', borderBottom: '1px solid #f0f4f8' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#425466' }}>기본 정보</div>
+              </div>
+              <div style={{ padding: 18 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={labelCls}>제목 *</label>
+                    <input style={inputCls} placeholder="예: 3층 화장실 천장 누수" value={form.title} onChange={e => setField('title', e.target.value)} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={labelCls}>설명</label>
+                    <textarea style={{ ...inputCls, resize: 'vertical', lineHeight: 1.6 }} rows={2} placeholder="상세 내용..." value={form.description} onChange={e => setField('description', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>카테고리</label>
+                    <select style={selectCls} value={form.categoryId} onChange={e => setField('categoryId', e.target.value)}>
+                      <option value="">선택</option>
+                      {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>심각도</label>
+                    <select style={selectCls} value={form.severity} onChange={e => setField('severity', e.target.value)}>
+                      <option value="low">낮음</option>
+                      <option value="medium">보통</option>
+                      <option value="high">높음</option>
+                      <option value="critical">긴급</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>비용유형</label>
+                    <select style={selectCls} value={form.costType} onChange={e => setField('costType', e.target.value)}>
+                      <option value="our">자체</option>
+                      <option value="gukbo">국보</option>
+                      <option value="claim">청구</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>발생일</label>
+                    <input type="date" style={inputCls} value={form.firstOccurredAt} onChange={e => setField('firstOccurredAt', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>신고자</label>
+                    <input style={inputCls} placeholder="홍길동(시설팀)" value={form.reporterName} onChange={e => setField('reporterName', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>담당자</label>
+                    <input style={inputCls} value={form.managerName} onChange={e => setField('managerName', e.target.value)} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={labelCls}>협력업체</label>
+                    <select style={selectCls} value={form.assignedVendorId} onChange={e => setField('assignedVendorId', e.target.value)}>
+                      <option value="">미지정</option>
+                      {state.vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 사진 첨부 */}
+            <div style={card}>
+              <div style={{ padding: '12px 18px', background: '#fafbfc', borderBottom: '1px solid #f0f4f8' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#425466' }}>사진 첨부 (선택, 조치전)</div>
+              </div>
+              <div style={{ padding: 18 }}>
+                <label style={{
+                  cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontSize: '0.75rem', color: '#635bff', fontWeight: 600,
+                  padding: '7px 12px', border: '1.5px solid #635bff', borderRadius: 7,
+                }}>
+                  <i className="fa-solid fa-camera" /> 사진 선택
+                  <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onPhotoFilesSelected} />
+                </label>
+                {photoFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                    {photoFiles.map((f, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f7fa', borderRadius: 6, padding: '4px 8px' }}>
+                        <span style={{ fontSize: '.7rem', color: '#425466' }}>{f.name}</span>
+                        <button type="button" onClick={() => removePhotoFile(idx)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b0bac6', fontSize: '.7rem' }}>
+                          <i className="fa-solid fa-xmark" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p style={{ fontSize: '.68rem', color: '#b0bac6', marginTop: 10 }}>등록 후에도 상세 페이지에서 조치전/조치후/기타 사진을 계속 추가할 수 있습니다.</p>
+              </div>
+            </div>
+
+            {/* 위치 선택 */}
+            <div style={card}>
+              <div style={{ padding: '12px 18px', background: '#fafbfc', borderBottom: '1px solid #f0f4f8' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#425466' }}>위치 선택</div>
+              </div>
+              <div style={{ padding: 18 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 12 }}>
+                  <div>
+                    <label style={labelCls}>건물</label>
+                    <select style={selectCls} value={form.buildingId} onChange={e => onBuildingChange(Number(e.target.value))}>
+                      {state.buildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>층 / 도면</label>
+                    <select style={selectCls} value={form.floorPlanId} onChange={e => onFloorChange(Number(e.target.value))}>
+                      {floorPlans.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={labelCls}>위치 설명</label>
+                    <input style={inputCls} placeholder="예: 3층 남쪽 화장실 천장" value={form.locationText} onChange={e => setField('locationText', e.target.value)} />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#635bff', fontWeight: 600, background: 'rgba(99,91,255,.09)', padding: '5px 10px', borderRadius: 6 }}>
+                    <i className="fa-solid fa-crosshairs" /> 도면 클릭으로 위치 선택
+                  </span>
+                  <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', color: '#635bff', fontWeight: 600, padding: '4px 10px', border: '1.5px solid #635bff', borderRadius: 6 }}>
+                    <i className="fa-solid fa-upload" /> 도면 이미지 업로드
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFloorImageUpload} />
+                  </label>
+                </div>
+
+                <div
+                  ref={mapContainerRef}
+                  style={{ position: 'relative', cursor: 'crosshair', border: '1px solid #e3e8ef', borderRadius: 8 }}
+                  onClick={onMapClick}
+                >
+                  <div dangerouslySetInnerHTML={{ __html: floorSvg }} />
+                  {form.locationX != null && (
+                    <div style={{ position: 'absolute', left: `${form.locationX}%`, top: `${form.locationY ?? 0}%`, transform: 'translate(-50%,-50%)', pointerEvents: 'none', zIndex: 10 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', border: '2.5px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(0,0,0,.25)', background: '#635bff', color: '#fff', fontSize: 11 }}>
+                        <i className="fa-solid fa-location-dot" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {form.locationX != null && (
+                  <div style={{ fontSize: '0.72rem', color: '#635bff', fontWeight: 600, marginTop: 8, minHeight: 18 }}>
+                    선택 좌표: ({form.locationX}%, {form.locationY}%)
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* AI 현장 메모 분석 */}
             <div style={{ ...card, borderColor: 'rgba(99,91,255,.35)', marginBottom: 14 }}>
-              <div style={{ padding: '12px 18px', background: 'linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,.04))', borderBottom: '1px solid rgba(99,91,255,.2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                onClick={() => setAiMemoExpanded(v => !v)}
+                style={{ padding: '12px 18px', background: 'linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,.04))', borderBottom: '1px solid rgba(99,91,255,.2)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+              >
                 <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#635bff', fontSize: 13 }} />
                 <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#635bff' }}>AI 현장 메모 분석</span>
                 <span style={{ fontSize: '0.67rem', color: '#8b97b0' }}>· 메모 입력 시 양식을 자동으로 채워드립니다</span>
+                <i className={`fa-solid ${aiMemoExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ marginLeft: 'auto', color: '#635bff', fontSize: 12 }} />
               </div>
+              {aiMemoExpanded && (
               <div style={{ padding: 18 }}>
                 <label style={labelCls}>현장 메모</label>
                 <textarea
@@ -290,6 +447,7 @@ export default function NewDefectPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             {/* AI 비용 예측 */}
@@ -336,157 +494,6 @@ export default function NewDefectPage() {
                 </div>
               </div>
             )}
-
-            {/* 기본 정보 */}
-            <div style={card}>
-              <div style={{ padding: '12px 18px', background: '#fafbfc', borderBottom: '1px solid #f0f4f8' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#425466' }}>기본 정보</div>
-              </div>
-              <div style={{ padding: 18 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>제목 *</label>
-                    <input style={inputCls} placeholder="예: 3층 화장실 천장 누수" value={form.title} onChange={e => setField('title', e.target.value)} />
-                  </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>설명</label>
-                    <textarea style={{ ...inputCls, resize: 'vertical', lineHeight: 1.6 }} rows={2} placeholder="상세 내용..." value={form.description} onChange={e => setField('description', e.target.value)} />
-                  </div>
-                  <div>
-                    <label style={labelCls}>카테고리</label>
-                    <select style={selectCls} value={form.categoryId} onChange={e => setField('categoryId', e.target.value)}>
-                      <option value="">선택</option>
-                      {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelCls}>심각도</label>
-                    <select style={selectCls} value={form.severity} onChange={e => setField('severity', e.target.value)}>
-                      <option value="low">낮음</option>
-                      <option value="medium">보통</option>
-                      <option value="high">높음</option>
-                      <option value="critical">긴급</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelCls}>비용유형</label>
-                    <select style={selectCls} value={form.costType} onChange={e => setField('costType', e.target.value)}>
-                      <option value="our">자체</option>
-                      <option value="gukbo">국보</option>
-                      <option value="claim">청구</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelCls}>발생일</label>
-                    <input type="date" style={inputCls} value={form.firstOccurredAt} onChange={e => setField('firstOccurredAt', e.target.value)} />
-                  </div>
-                  <div>
-                    <label style={labelCls}>신고자</label>
-                    <input style={inputCls} placeholder="홍길동(시설팀)" value={form.reporterName} onChange={e => setField('reporterName', e.target.value)} />
-                  </div>
-                  <div>
-                    <label style={labelCls}>담당자</label>
-                    <input style={inputCls} value={form.managerName} onChange={e => setField('managerName', e.target.value)} />
-                  </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>협력업체</label>
-                    <select style={selectCls} value={form.assignedVendorId} onChange={e => setField('assignedVendorId', e.target.value)}>
-                      <option value="">미지정</option>
-                      {state.vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 위치 선택 */}
-            <div style={card}>
-              <div style={{ padding: '12px 18px', background: '#fafbfc', borderBottom: '1px solid #f0f4f8' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#425466' }}>위치 선택</div>
-              </div>
-              <div style={{ padding: 18 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 12 }}>
-                  <div>
-                    <label style={labelCls}>건물</label>
-                    <select style={selectCls} value={form.buildingId} onChange={e => onBuildingChange(Number(e.target.value))}>
-                      {state.buildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelCls}>층 / 도면</label>
-                    <select style={selectCls} value={form.floorPlanId} onChange={e => onFloorChange(Number(e.target.value))}>
-                      {floorPlans.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>위치 설명</label>
-                    <input style={inputCls} placeholder="예: 3층 남쪽 화장실 천장" value={form.locationText} onChange={e => setField('locationText', e.target.value)} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#635bff', fontWeight: 600, background: 'rgba(99,91,255,.09)', padding: '5px 10px', borderRadius: 6 }}>
-                    <i className="fa-solid fa-crosshairs" /> 도면 클릭으로 위치 선택
-                  </span>
-                  <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', color: '#635bff', fontWeight: 600, padding: '4px 10px', border: '1.5px solid #635bff', borderRadius: 6 }}>
-                    <i className="fa-solid fa-upload" /> 도면 이미지 업로드
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFloorImageUpload} />
-                  </label>
-                </div>
-
-                <div
-                  ref={mapContainerRef}
-                  style={{ position: 'relative', cursor: 'crosshair', border: '1px solid #e3e8ef', borderRadius: 8 }}
-                  onClick={onMapClick}
-                >
-                  <div dangerouslySetInnerHTML={{ __html: floorSvg }} />
-                  {form.locationX != null && (
-                    <div style={{ position: 'absolute', left: `${form.locationX}%`, top: `${form.locationY ?? 0}%`, transform: 'translate(-50%,-50%)', pointerEvents: 'none', zIndex: 10 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', border: '2.5px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(0,0,0,.25)', background: '#635bff', color: '#fff', fontSize: 11 }}>
-                        <i className="fa-solid fa-location-dot" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {form.locationX != null && (
-                  <div style={{ fontSize: '0.72rem', color: '#635bff', fontWeight: 600, marginTop: 8, minHeight: 18 }}>
-                    선택 좌표: ({form.locationX}%, {form.locationY}%)
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 사진 첨부 */}
-            <div style={card}>
-              <div style={{ padding: '12px 18px', background: '#fafbfc', borderBottom: '1px solid #f0f4f8' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#425466' }}>사진 첨부 (선택, 조치전)</div>
-              </div>
-              <div style={{ padding: 18 }}>
-                <label style={{
-                  cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontSize: '0.75rem', color: '#635bff', fontWeight: 600,
-                  padding: '7px 12px', border: '1.5px solid #635bff', borderRadius: 7,
-                }}>
-                  <i className="fa-solid fa-camera" /> 사진 선택
-                  <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onPhotoFilesSelected} />
-                </label>
-                {photoFiles.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                    {photoFiles.map((f, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f7fa', borderRadius: 6, padding: '4px 8px' }}>
-                        <span style={{ fontSize: '.7rem', color: '#425466' }}>{f.name}</span>
-                        <button type="button" onClick={() => removePhotoFile(idx)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b0bac6', fontSize: '.7rem' }}>
-                          <i className="fa-solid fa-xmark" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <p style={{ fontSize: '.68rem', color: '#b0bac6', marginTop: 10 }}>등록 후에도 상세 페이지에서 조치전/조치후/기타 사진을 계속 추가할 수 있습니다.</p>
-              </div>
-            </div>
           </div>
 
           {/* Right: Sidebar */}
