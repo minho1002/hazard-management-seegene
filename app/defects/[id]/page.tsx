@@ -143,9 +143,10 @@ export default function DefectDetailPage() {
     router.push('/defects')
   }
 
-  function applyStatusChange(target: StatusKey, opts?: { actionContent?: string; actualCost?: string }): boolean {
+  function applyStatusChange(target: StatusKey, opts?: { actionContent?: string; actualCost?: string; reason?: string | null }): boolean {
     const result = updateDefectStatus(defect.id, target, {
       changedBy: defect.managerName ?? null,
+      reason: opts?.reason ?? null,
       actionContent: opts?.actionContent || null,
       actualCost: opts?.actualCost ? Number(opts.actualCost) : null,
     })
@@ -157,6 +158,13 @@ export default function DefectDetailPage() {
     if (target === 'action_done') {
       setActionDoneForm({ actionContent: defect.lastActionContent ?? '', actualCost: '' })
       setShowActionDoneModal(true)
+      return
+    }
+    if (target === 'hold') {
+      const reason = prompt('보류 사유를 입력하세요.')
+      if (reason == null) return
+      if (!reason.trim()) { alert('보류 사유를 입력해야 합니다.'); return }
+      applyStatusChange('hold', { reason: reason.trim() })
       return
     }
     applyStatusChange(target as StatusKey)

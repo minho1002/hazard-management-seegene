@@ -340,6 +340,7 @@ function persistState(s: AppState) {
   } catch (e) {
     // 저장 공간 초과 등 — 화면 상태(setState)는 계속 반영되지만 새로고침 시 유실될 수 있음
     console.error('localStorage 저장 실패(저장 공간 부족 가능):', e)
+    alert('변경사항 저장에 실패했습니다(저장 공간 부족 가능). 새로고침 시 이 변경사항이 사라질 수 있으니, 관리자에게 문의하거나 불필요한 첨부파일을 정리해주세요.')
   }
 }
 

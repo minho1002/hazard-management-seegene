@@ -25,7 +25,7 @@ function DefectsPageInner() {
   const searchParams = useSearchParams()
   const urlFilter = searchParams.get('filter')
   const urlSearch = searchParams.get('search')
-  const { state } = useStore()
+  const { state, restoreDefect } = useStore()
   const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const [search, setSearch] = useState(urlSearch || '')
@@ -263,7 +263,10 @@ function DefectsPageInner() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#fafbfc', borderBottom: '1px solid #e3e8ef' }}>
-                {['케이스번호', '하자명', '카테고리', '심각도', '상태', '위치', '비용유형', '최초발생'].map(h => (
+                {[
+                  '케이스번호', '하자명', '카테고리', '심각도', '상태', '위치', '비용유형', '최초발생',
+                  ...(canSeeDeleted && showDeleted ? ['관리'] : []),
+                ].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '9px 16px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#697386' }}>{h}</th>
                 ))}
               </tr>
@@ -271,7 +274,7 @@ function DefectsPageInner() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={canSeeDeleted && showDeleted ? 9 : 8}>
                     <EmptyState icon="fa-solid fa-inbox" message="등록된 하자가 없습니다." actionLabel="하자 등록" actionHref="/defects/new" />
                   </td>
                 </tr>
@@ -328,6 +331,19 @@ function DefectsPageInner() {
                     </td>
                     <td style={{ padding: '11px 16px', verticalAlign: 'middle', fontSize: '0.75rem', color: '#697386' }}>{COST_LABELS[d.costType] || d.costType}</td>
                     <td style={{ padding: '11px 16px', verticalAlign: 'middle', fontSize: '0.75rem', color: '#697386' }}>{fmtDate(d.firstOccurredAt)}</td>
+                    {canSeeDeleted && showDeleted && (
+                      <td style={{ padding: '11px 16px', verticalAlign: 'middle' }}>
+                        <button
+                          onClick={e => {
+                            e.stopPropagation()
+                            if (confirm(`'${d.title}' 하자를 복구하시겠습니까?`)) restoreDefect(d.id)
+                          }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 7, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #cde5d6', background: '#f0fdf4', color: '#16A34A', fontFamily: 'inherit' }}
+                        >
+                          <i className="fa-solid fa-rotate-left" /> 복구
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 )
               })}
