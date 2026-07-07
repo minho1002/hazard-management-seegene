@@ -97,6 +97,9 @@ export interface Defect {
   isWarrantyClaimTarget?: boolean
   relatedContract?: string | null
   classificationReason?: string | null
+  // 반복 하자 분석 확장 필드 (Phase 2 신규 — 7단계, 관리자가 확정/해제했을 때만 값이 들어감)
+  recurringLevel?: '반복 아님' | '반복 의심' | '반복 확정' | '재점검 필요' | '예방조치 진행중' | '예방조치 완료'
+  recurringConfirmedReason?: string | null
 }
 
 export interface DefectStatusHistory {
@@ -170,6 +173,16 @@ export interface DefectFileDeleteLog {
   reason: string
 }
 
+// 관리자의 반복 하자 확정/해제 이력 (Phase 2 신규 — 7단계)
+export interface DefectRecurringHistory {
+  id: number
+  defectId: number
+  changedBy: string | null
+  changedAt: string
+  level: string
+  reason: string | null
+}
+
 // 도면 위 다중 위치 마커 (Phase 2 신규 — 4단계). severity/status가 null이면 하자 자체 값을 상속한다.
 export interface DefectLocation {
   id: number
@@ -200,6 +213,7 @@ export interface AppState {
   classificationHistory: DefectClassificationHistory[]
   fileDeleteLogs: DefectFileDeleteLog[]
   defectLocations: DefectLocation[]
+  recurringHistory: DefectRecurringHistory[]
 }
 
 // ── SEED DATA ─────────────────────────────────────────────────────────────
@@ -245,6 +259,7 @@ const SEED: AppState = {
     { id: 4, defectId: 4, floorPlanId: 3, x: 45, y: 75, label: '1층 로비 중앙', description: null, severity: null, status: null, notes: null, createdAt: '2026-04-16', createdBy: null },
     { id: 5, defectId: 5, floorPlanId: 1, x: 20, y: 40, label: '지하2층 기계실', description: null, severity: null, status: null, notes: null, createdAt: '2026-04-16', createdBy: null },
   ],
+  recurringHistory: [],
   defects: [
     { id: 1, caseNumber: 'DEF-2024-001', title: '지하1층 주차장 누수', description: '주차장 천장에서 물이 새고 있음. 비가 올 때마다 심해짐', buildingId: 1, floorPlanId: 2, locationX: 35.5, locationY: 60.2, locationText: '지하1층 주차장 A구역', categoryId: 1, severity: 'high', status: 'in_progress', costType: 'gukbo', reporterName: '홍길동(시설팀)', assignedVendorId: 1, managerName: '김관리', recurrenceCount: 2, firstOccurredAt: '2024-03-15', lastOccurredAt: '2024-11-20', totalCost: 850000, createdAt: '2026-04-16' },
     { id: 2, caseNumber: 'DEF-2024-002', title: '3층 전기실 분전반 이상', description: '분전반에서 이상 소음 발생, 주기적 점검 필요', buildingId: 1, floorPlanId: 5, locationX: 70, locationY: 30, locationText: '3층 전기실', categoryId: 2, severity: 'critical', status: 'completed', costType: 'our', reporterName: '이시설(시설팀)', assignedVendorId: 3, managerName: '김관리', recurrenceCount: 0, firstOccurredAt: '2024-04-10', lastOccurredAt: '2024-09-05', totalCost: 1200000, createdAt: '2026-04-16' },
@@ -287,6 +302,7 @@ function loadState(): AppState {
       if (!parsed.classificationHistory) parsed.classificationHistory = []
       if (!parsed.fileDeleteLogs) parsed.fileDeleteLogs = []
       if (!parsed.defectLocations) parsed.defectLocations = []
+      if (!parsed.recurringHistory) parsed.recurringHistory = []
       // 레거시 단일좌표(locationX/Y) -> defectLocations 1회성 마이그레이션
       parsed.defects.forEach(d => {
         if (d.locationX != null && !parsed.defectLocations.some(l => l.defectId === d.id)) {
@@ -612,6 +628,41 @@ export function useStore() {
     })
   }, [])
 
+  const updateRecurringStatus = useCallback((id: number, level: Defect['recurringLevel'], opts: {
+    changedBy: string | null
+    reason?: string | null
+  }): { ok: boolean; error?: string } => {
+    const current = loadState()
+    const defect = current.defects.find(d => d.id === id)
+    if (!defect) return { ok: false, error: '하자를 찾을 수 없습니다.' }
+
+    const isConfirmOrRelease = level === '반복 확정' || (defect.recurringLevel === '반복 확정' && level === '반복 아님')
+    if (isConfirmOrRelease && !canFinalize(CURRENT_ROLE)) {
+      return { ok: false, error: '반복 하자 확정/해제는 관리자만 처리할 수 있습니다.' }
+    }
+    if (isConfirmOrRelease && !opts.reason?.trim()) {
+      return { ok: false, error: '반복 확정/해제는 사유 입력이 필수입니다.' }
+    }
+
+    const history: DefectRecurringHistory = {
+      id: nextId(current.recurringHistory),
+      defectId: id,
+      changedBy: opts.changedBy,
+      changedAt: new Date().toISOString(),
+      level: level ?? '반복 아님',
+      reason: opts.reason ?? null,
+    }
+
+    const next: AppState = {
+      ...current,
+      defects: current.defects.map(d => d.id === id ? { ...d, recurringLevel: level, recurringConfirmedReason: opts.reason ?? null } : d),
+      recurringHistory: [...current.recurringHistory, history],
+    }
+    persistState(next)
+    setState(next)
+    return { ok: true }
+  }, [])
+
   const addLog = useCallback((logData: Omit<DefectLog, 'id'>) => {
     setState(prev => {
       const log: DefectLog = { ...logData, id: nextId(prev.logs) }
@@ -702,6 +753,7 @@ export function useStore() {
     updateDefectLocationPosition,
     removeDefectLocation,
     clearDefectLocations,
+    updateRecurringStatus,
     addLog,
     saveFloorImage,
     addFile,

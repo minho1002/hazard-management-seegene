@@ -12,6 +12,9 @@ import SeverityBadge from '@/components/ui/SeverityBadge'
 import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canFinalize, CURRENT_ROLE } from '@/lib/permissions'
+import { analyzeRecurrence } from '@/lib/recurringAnalysisService'
+
+const RECURRING_LEVEL_OPTIONS = ['반복 아님', '반복 의심', '반복 확정', '재점검 필요', '예방조치 진행중', '예방조치 완료'] as const
 
 const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
 const RESPONSIBILITY_OPTIONS = ['시공사 귀책', '재단/운영측 부담', '외주업체 부담', '사용자 과실', '소모품/노후', '원인 불명', '분쟁 가능']
@@ -46,7 +49,7 @@ function fmtKRW(n: number | null | undefined) {
 export default function DefectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, updateDefectStatus, updateClassification, softDeleteDefect, addLog, saveFloorImage, addDefectLocation, updateDefectLocation, updateDefectLocationPosition, removeDefectLocation, clearDefectLocations } = useStore()
+  const { state, updateDefectStatus, updateClassification, softDeleteDefect, addLog, saveFloorImage, addDefectLocation, updateDefectLocation, updateDefectLocationPosition, removeDefectLocation, clearDefectLocations, updateRecurringStatus } = useStore()
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null)
@@ -91,6 +94,13 @@ export default function DefectDetailPage() {
     })
   }, [defectRaw?.id, defectRaw?.defectType, defectRaw?.responsibilityType, defectRaw?.costBearer, defectRaw?.reviewStatus, defectRaw?.costApprovalStatus, defectRaw?.warrantyStatus, defectRaw?.isWarrantyClaimTarget, defectRaw?.relatedContract])
 
+  const [recurringForm, setRecurringForm] = useState({ level: '반복 아님' as string, reason: '' })
+
+  useEffect(() => {
+    if (!defectRaw) return
+    setRecurringForm({ level: defectRaw.recurringLevel ?? '반복 아님', reason: '' })
+  }, [defectRaw?.id, defectRaw?.recurringLevel])
+
   if (!defectRaw) {
     return (
       <div style={{ padding: 52, textAlign: 'center', color: '#697386' }}>
@@ -113,6 +123,11 @@ export default function DefectDetailPage() {
   const classificationHistory = state.classificationHistory
     .filter(h => h.defectId === defect.id)
     .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
+  const recurringAnalysis = analyzeRecurrence(defect, state.defects)
+  const displayedRecurringLevel = defect.recurringLevel ?? recurringAnalysis.level
+  const similarDefects = recurringAnalysis.matchedDefectIds
+    .map(mid => state.defects.find(d => d.id === mid))
+    .filter((d): d is Defect => !!d)
   const locations = state.defectLocations.filter(l => l.defectId === defect.id).sort((a, b) => a.id - b.id)
 
   const floorSvg = state.floorPlanImages[defect.floorPlanId ?? 0]
@@ -192,6 +207,14 @@ export default function DefectDetailPage() {
     if (!confirm('등록된 모든 위치를 초기화하시겠습니까?')) return
     clearDefectLocations(defect.id)
     setSelectedLocationId(null)
+  }
+
+  function submitRecurring() {
+    const result = updateRecurringStatus(defect.id, recurringForm.level as Defect['recurringLevel'], {
+      changedBy: defect.managerName ?? null,
+      reason: recurringForm.reason || null,
+    })
+    if (!result.ok) alert(result.error)
   }
 
   function handleFloorImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -376,6 +399,62 @@ export default function DefectDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* 반복 하자 분석 */}
+            <div style={{ ...card, marginTop: 16 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386' }}>반복 하자 분석</span>
+                <span style={{
+                  fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                  background: displayedRecurringLevel === '반복 확정' ? '#FEF2F2' : displayedRecurringLevel === '반복 의심' ? '#FFF7ED' : '#f3f5f7',
+                  color: displayedRecurringLevel === '반복 확정' ? COLORS.danger : displayedRecurringLevel === '반복 의심' ? COLORS.warning : '#425466',
+                }}>{displayedRecurringLevel}</span>
+                {!defect.recurringLevel && <span style={{ fontSize: '0.62rem', color: '#b0bac6' }}>(자동분석, 미확정)</span>}
+              </div>
+              <div style={{ padding: 16 }}>
+                <div style={{ fontSize: '0.8rem', color: '#425466', marginBottom: 10 }}>{recurringAnalysis.reasonSummary}</div>
+                {recurringAnalysis.recommendedAction && (
+                  <div style={{ marginBottom: 10, padding: '8px 12px', background: '#fafbfc', border: '1px solid #e3e8ef', borderRadius: 8, fontSize: '0.75rem', color: '#425466' }}>
+                    <strong style={{ color: '#0a2540' }}>권장 조치:</strong> {recurringAnalysis.recommendedAction}
+                  </div>
+                )}
+                {similarDefects.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#697386', marginBottom: 6 }}>과거 유사 하자</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {similarDefects.map(d => (
+                        <Link key={d.id} href={`/defects/${d.id}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 8px', background: '#fafbfc', border: '1px solid #e3e8ef', borderRadius: 6, textDecoration: 'none', fontSize: '0.75rem', color: '#0a2540' }}>
+                          <span>{d.caseNumber} · {d.title}</span>
+                          <span style={{ color: '#697386' }}>{fmtDate(d.firstOccurredAt)}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {canConfirmClassification ? (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' as const }}>
+                    <div style={{ flex: '1 1 140px' }}>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>반복 상태</label>
+                      <select style={classifySelectStyle} value={recurringForm.level} onChange={e => setRecurringForm(f => ({ ...f, level: e.target.value }))}>
+                        {RECURRING_LEVEL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ flex: '2 1 200px' }}>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>사유(확정/해제 시 필수)</label>
+                      <input style={modalInputStyle} placeholder="예: 동일 위치 3회 재발 확인" value={recurringForm.reason} onChange={e => setRecurringForm(f => ({ ...f, reason: e.target.value }))} />
+                    </div>
+                    <button
+                      onClick={submitRecurring}
+                      style={{ padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #635bff', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}
+                    >
+                      적용
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.78rem', color: '#697386' }}>반복 확정/해제는 관리자만 가능합니다.</div>
+                )}
+              </div>
+            </div>
 
             {/* 하자 구분 및 귀책 판단 */}
             <div style={{ ...card, marginTop: 16 }}>

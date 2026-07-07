@@ -12,6 +12,7 @@ const menuItems = [
 ]
 
 const analysisItems = [
+  { href: '/analytics',  label: '집계현황',     icon: 'fa-solid fa-chart-line' },
   { href: '/reports',    label: '보고서',       icon: 'fa-solid fa-chart-bar' },
   { href: '/reports/ai', label: 'AI 보고서',    icon: 'fa-solid fa-wand-magic-sparkles' },
   { href: '/ai',         label: 'AI 어시스턴트', icon: 'fa-solid fa-robot' },
