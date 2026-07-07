@@ -475,11 +475,11 @@ export default function DefectDetailPage() {
               </div>
             </div>
 
-            {/* Photos & files (증빙자료는 이 섹션을 재사용 — 9종 첨부구분·비교 UI는 3단계에서 확장) */}
+            {/* Photos & files (증빙자료는 이 섹션을 재사용) */}
             <div style={{ fontSize: '0.7rem', color: '#b0bac6', marginTop: 16, marginBottom: -8 }}>
               증빙자료(견적서/작업확인서 등)는 아래 사진/첨부파일 영역에서 관리합니다.
             </div>
-            <DefectPhotos defectId={defect.id} />
+            <DefectPhotos defectId={defect.id} uploadedBy={defect.managerName ?? null} />
           </div>
 
           {/* Right: Timeline + 상태 변경 이력 */}

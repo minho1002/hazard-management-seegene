@@ -141,7 +141,10 @@ export interface DefectLog {
   occurredAt: string
 }
 
-export type PhotoType = 'before' | 'after' | 'other'
+export type PhotoType =
+  | 'before' | 'during' | 'after'
+  | 'quote' | 'work_confirmation' | 'inspection_sheet' | 'contract' | 'vendor_opinion'
+  | 'other'
 
 export interface DefectFile {
   id: number
@@ -151,6 +154,20 @@ export interface DefectFile {
   fileType: string
   dataUrl: string
   uploadedAt: string
+  uploadedBy?: string | null
+}
+
+// 삭제 시점의 파일 메타데이터 스냅샷 (무거운 dataUrl은 저장하지 않음 — 용량 회수 목적과 상충)
+export interface DefectFileDeleteLog {
+  id: number
+  fileId: number
+  defectId: number
+  fileName: string
+  photoType: PhotoType
+  uploadedBy: string | null
+  deletedBy: string | null
+  deletedAt: string
+  reason: string
 }
 
 export interface AppState {
@@ -165,6 +182,7 @@ export interface AppState {
   statusHistory: DefectStatusHistory[]
   deleteLogs: DefectDeleteLog[]
   classificationHistory: DefectClassificationHistory[]
+  fileDeleteLogs: DefectFileDeleteLog[]
 }
 
 // ── SEED DATA ─────────────────────────────────────────────────────────────
@@ -200,6 +218,7 @@ const SEED: AppState = {
   statusHistory: [],
   deleteLogs: [],
   classificationHistory: [],
+  fileDeleteLogs: [],
   defects: [
     { id: 1, caseNumber: 'DEF-2024-001', title: '지하1층 주차장 누수', description: '주차장 천장에서 물이 새고 있음. 비가 올 때마다 심해짐', buildingId: 1, floorPlanId: 2, locationX: 35.5, locationY: 60.2, locationText: '지하1층 주차장 A구역', categoryId: 1, severity: 'high', status: 'in_progress', costType: 'gukbo', reporterName: '홍길동(시설팀)', assignedVendorId: 1, managerName: '김관리', recurrenceCount: 2, firstOccurredAt: '2024-03-15', lastOccurredAt: '2024-11-20', totalCost: 850000, createdAt: '2026-04-16' },
     { id: 2, caseNumber: 'DEF-2024-002', title: '3층 전기실 분전반 이상', description: '분전반에서 이상 소음 발생, 주기적 점검 필요', buildingId: 1, floorPlanId: 5, locationX: 70, locationY: 30, locationText: '3층 전기실', categoryId: 2, severity: 'critical', status: 'completed', costType: 'our', reporterName: '이시설(시설팀)', assignedVendorId: 3, managerName: '김관리', recurrenceCount: 0, firstOccurredAt: '2024-04-10', lastOccurredAt: '2024-09-05', totalCost: 1200000, createdAt: '2026-04-16' },
@@ -240,6 +259,7 @@ function loadState(): AppState {
       if (!parsed.statusHistory) parsed.statusHistory = []
       if (!parsed.deleteLogs) parsed.deleteLogs = []
       if (!parsed.classificationHistory) parsed.classificationHistory = []
+      if (!parsed.fileDeleteLogs) parsed.fileDeleteLogs = []
       // Merge new floor plans from SEED in case they are missing
       SEED.floorPlans.forEach(fp => {
         if (!parsed.floorPlans.find(f => f.id === fp.id)) parsed.floorPlans.push(fp)
@@ -253,7 +273,12 @@ function loadState(): AppState {
 
 function persistState(s: AppState) {
   if (typeof window === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+  } catch (e) {
+    // 저장 공간 초과 등 — 화면 상태(setState)는 계속 반영되지만 새로고침 시 유실될 수 있음
+    console.error('localStorage 저장 실패(저장 공간 부족 가능):', e)
+  }
 }
 
 function nextId(arr: { id: number }[]): number {
@@ -505,9 +530,26 @@ export function useStore() {
     })
   }, [])
 
-  const deleteFile = useCallback((id: number) => {
+  const deleteFile = useCallback((id: number, reason: string, deletedBy: string | null) => {
     setState(prev => {
-      const next = { ...prev, files: prev.files.filter(f => f.id !== id) }
+      const file = prev.files.find(f => f.id === id)
+      if (!file) return prev
+      const deleteLog: DefectFileDeleteLog = {
+        id: nextId(prev.fileDeleteLogs),
+        fileId: file.id,
+        defectId: file.defectId,
+        fileName: file.fileName,
+        photoType: file.photoType,
+        uploadedBy: file.uploadedBy ?? null,
+        deletedBy,
+        deletedAt: new Date().toISOString(),
+        reason,
+      }
+      const next: AppState = {
+        ...prev,
+        files: prev.files.filter(f => f.id !== id),
+        fileDeleteLogs: [...prev.fileDeleteLogs, deleteLog],
+      }
       persistState(next)
       return next
     })

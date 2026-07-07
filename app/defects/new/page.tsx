@@ -383,7 +383,7 @@ export default function NewDefectPage() {
                     ))}
                   </div>
                 )}
-                <p style={{ fontSize: '.68rem', color: '#b0bac6', marginTop: 10 }}>등록 후에도 상세 페이지에서 조치전/조치후/기타 사진을 계속 추가할 수 있습니다.</p>
+                <p style={{ fontSize: '.68rem', color: '#b0bac6', marginTop: 10 }}>등록 후에도 상세 페이지에서 조치전/조치중/조치후 사진과 견적서·작업확인서 등 첨부파일을 계속 추가할 수 있습니다.</p>
               </div>
             </div>
 
