@@ -269,6 +269,7 @@ function DefectsPageInner() {
               ) : filtered.map(d => {
                 const cat = state.categories.find(c => c.id === d.categoryId)
                 const overdue = isOverdue(d)
+                const locCount = state.defectLocations.filter(l => l.defectId === d.id).length
                 return (
                   <tr
                     key={d.id}
@@ -313,7 +314,9 @@ function DefectsPageInner() {
                         <span style={{ fontSize: '0.62rem', fontWeight: 700, color: COLORS.warning, background: '#FFF7ED', padding: '1px 6px', borderRadius: 4 }}>지연</span>
                       )}
                     </td>
-                    <td style={{ padding: '11px 16px', verticalAlign: 'middle', fontSize: '0.75rem', color: '#697386' }}>{d.locationText || '-'}</td>
+                    <td style={{ padding: '11px 16px', verticalAlign: 'middle', fontSize: '0.75rem', color: '#697386' }}>
+                      {d.locationText || '-'}{locCount > 1 ? ` (위치 ${locCount}개)` : ''}
+                    </td>
                     <td style={{ padding: '11px 16px', verticalAlign: 'middle', fontSize: '0.75rem', color: '#697386' }}>{COST_LABELS[d.costType] || d.costType}</td>
                     <td style={{ padding: '11px 16px', verticalAlign: 'middle', fontSize: '0.75rem', color: '#697386' }}>{fmtDate(d.firstOccurredAt)}</td>
                   </tr>

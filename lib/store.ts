@@ -170,6 +170,22 @@ export interface DefectFileDeleteLog {
   reason: string
 }
 
+// 도면 위 다중 위치 마커 (Phase 2 신규 — 4단계). severity/status가 null이면 하자 자체 값을 상속한다.
+export interface DefectLocation {
+  id: number
+  defectId: number
+  floorPlanId: number
+  x: number
+  y: number
+  label: string | null
+  description: string | null
+  severity: string | null
+  status: string | null
+  notes: string | null
+  createdAt: string
+  createdBy: string | null
+}
+
 export interface AppState {
   categories: Category[]
   vendors: Vendor[]
@@ -183,6 +199,7 @@ export interface AppState {
   deleteLogs: DefectDeleteLog[]
   classificationHistory: DefectClassificationHistory[]
   fileDeleteLogs: DefectFileDeleteLog[]
+  defectLocations: DefectLocation[]
 }
 
 // ── SEED DATA ─────────────────────────────────────────────────────────────
@@ -219,6 +236,15 @@ const SEED: AppState = {
   deleteLogs: [],
   classificationHistory: [],
   fileDeleteLogs: [],
+  // 시드 하자 5건의 기존 locationX/Y를 그대로 마커 1개씩으로 반영 (loadState의 마이그레이션은
+  // localStorage에 저장된 기존 데이터가 있을 때만 실행되므로, 시드 자체는 직접 채워둔다)
+  defectLocations: [
+    { id: 1, defectId: 1, floorPlanId: 2, x: 35.5, y: 60.2, label: '지하1층 주차장 A구역', description: null, severity: null, status: null, notes: null, createdAt: '2026-04-16', createdBy: null },
+    { id: 2, defectId: 2, floorPlanId: 5, x: 70, y: 30, label: '3층 전기실', description: null, severity: null, status: null, notes: null, createdAt: '2026-04-16', createdBy: null },
+    { id: 3, defectId: 3, floorPlanId: 4, x: 50, y: 50, label: '2층 201호 사무실', description: null, severity: null, status: null, notes: null, createdAt: '2026-04-16', createdBy: null },
+    { id: 4, defectId: 4, floorPlanId: 3, x: 45, y: 75, label: '1층 로비 중앙', description: null, severity: null, status: null, notes: null, createdAt: '2026-04-16', createdBy: null },
+    { id: 5, defectId: 5, floorPlanId: 1, x: 20, y: 40, label: '지하2층 기계실', description: null, severity: null, status: null, notes: null, createdAt: '2026-04-16', createdBy: null },
+  ],
   defects: [
     { id: 1, caseNumber: 'DEF-2024-001', title: '지하1층 주차장 누수', description: '주차장 천장에서 물이 새고 있음. 비가 올 때마다 심해짐', buildingId: 1, floorPlanId: 2, locationX: 35.5, locationY: 60.2, locationText: '지하1층 주차장 A구역', categoryId: 1, severity: 'high', status: 'in_progress', costType: 'gukbo', reporterName: '홍길동(시설팀)', assignedVendorId: 1, managerName: '김관리', recurrenceCount: 2, firstOccurredAt: '2024-03-15', lastOccurredAt: '2024-11-20', totalCost: 850000, createdAt: '2026-04-16' },
     { id: 2, caseNumber: 'DEF-2024-002', title: '3층 전기실 분전반 이상', description: '분전반에서 이상 소음 발생, 주기적 점검 필요', buildingId: 1, floorPlanId: 5, locationX: 70, locationY: 30, locationText: '3층 전기실', categoryId: 2, severity: 'critical', status: 'completed', costType: 'our', reporterName: '이시설(시설팀)', assignedVendorId: 3, managerName: '김관리', recurrenceCount: 0, firstOccurredAt: '2024-04-10', lastOccurredAt: '2024-09-05', totalCost: 1200000, createdAt: '2026-04-16' },
@@ -260,6 +286,26 @@ function loadState(): AppState {
       if (!parsed.deleteLogs) parsed.deleteLogs = []
       if (!parsed.classificationHistory) parsed.classificationHistory = []
       if (!parsed.fileDeleteLogs) parsed.fileDeleteLogs = []
+      if (!parsed.defectLocations) parsed.defectLocations = []
+      // 레거시 단일좌표(locationX/Y) -> defectLocations 1회성 마이그레이션
+      parsed.defects.forEach(d => {
+        if (d.locationX != null && !parsed.defectLocations.some(l => l.defectId === d.id)) {
+          parsed.defectLocations.push({
+            id: nextId(parsed.defectLocations),
+            defectId: d.id,
+            floorPlanId: d.floorPlanId ?? 1,
+            x: d.locationX,
+            y: d.locationY ?? 0,
+            label: d.locationText,
+            description: null,
+            severity: null,
+            status: null,
+            notes: null,
+            createdAt: d.createdAt,
+            createdBy: null,
+          })
+        }
+      })
       // Merge new floor plans from SEED in case they are missing
       SEED.floorPlans.forEach(fp => {
         if (!parsed.floorPlans.find(f => f.id === fp.id)) parsed.floorPlans.push(fp)
@@ -289,6 +335,13 @@ function nextCase(defects: Defect[]): string {
   const yr = new Date().getFullYear()
   const cnt = defects.filter(d => d.caseNumber.startsWith(`DEF-${yr}-`)).length
   return `DEF-${yr}-${String(cnt + 1).padStart(3, '0')}`
+}
+
+// 하위호환: defectLocations 중 가장 먼저 생성된 위치를 defect.locationX/Y에 미러링한다.
+// (locationText는 사용자가 별도로 입력하는 자유 텍스트라 건드리지 않음)
+function mirrorPrimaryLocation(defects: Defect[], locations: DefectLocation[], defectId: number): Defect[] {
+  const primary = locations.filter(l => l.defectId === defectId).sort((a, b) => a.id - b.id)[0]
+  return defects.map(d => d.id === defectId ? { ...d, locationX: primary?.x ?? null, locationY: primary?.y ?? null } : d)
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────────
@@ -479,6 +532,86 @@ export function useStore() {
     return { ok: true }
   }, [])
 
+  const addDefectLocation = useCallback((defectId: number, floorPlanId: number, x: number, y: number, opts?: {
+    label?: string | null
+    description?: string | null
+    severity?: string | null
+    status?: string | null
+    notes?: string | null
+    createdBy?: string | null
+  }): number => {
+    const current = loadState()
+    const location: DefectLocation = {
+      id: nextId(current.defectLocations),
+      defectId, floorPlanId, x, y,
+      label: opts?.label ?? null,
+      description: opts?.description ?? null,
+      severity: opts?.severity ?? null,
+      status: opts?.status ?? null,
+      notes: opts?.notes ?? null,
+      createdAt: new Date().toISOString(),
+      createdBy: opts?.createdBy ?? null,
+    }
+    const locations = [...current.defectLocations, location]
+    const next: AppState = {
+      ...current,
+      defectLocations: locations,
+      defects: mirrorPrimaryLocation(current.defects, locations, defectId),
+    }
+    persistState(next)
+    setState(next)
+    return location.id
+  }, [])
+
+  const updateDefectLocation = useCallback((id: number, patch: Partial<Pick<DefectLocation, 'label' | 'description' | 'severity' | 'status' | 'notes'>>) => {
+    setState(prev => {
+      const next: AppState = { ...prev, defectLocations: prev.defectLocations.map(l => l.id === id ? { ...l, ...patch } : l) }
+      persistState(next)
+      return next
+    })
+  }, [])
+
+  const updateDefectLocationPosition = useCallback((id: number, x: number, y: number) => {
+    setState(prev => {
+      const loc = prev.defectLocations.find(l => l.id === id)
+      const locations = prev.defectLocations.map(l => l.id === id ? { ...l, x, y } : l)
+      const next: AppState = {
+        ...prev,
+        defectLocations: locations,
+        defects: loc ? mirrorPrimaryLocation(prev.defects, locations, loc.defectId) : prev.defects,
+      }
+      persistState(next)
+      return next
+    })
+  }, [])
+
+  const removeDefectLocation = useCallback((id: number) => {
+    setState(prev => {
+      const loc = prev.defectLocations.find(l => l.id === id)
+      const locations = prev.defectLocations.filter(l => l.id !== id)
+      const next: AppState = {
+        ...prev,
+        defectLocations: locations,
+        defects: loc ? mirrorPrimaryLocation(prev.defects, locations, loc.defectId) : prev.defects,
+      }
+      persistState(next)
+      return next
+    })
+  }, [])
+
+  const clearDefectLocations = useCallback((defectId: number) => {
+    setState(prev => {
+      const locations = prev.defectLocations.filter(l => l.defectId !== defectId)
+      const next: AppState = {
+        ...prev,
+        defectLocations: locations,
+        defects: mirrorPrimaryLocation(prev.defects, locations, defectId),
+      }
+      persistState(next)
+      return next
+    })
+  }, [])
+
   const addLog = useCallback((logData: Omit<DefectLog, 'id'>) => {
     setState(prev => {
       const log: DefectLog = { ...logData, id: nextId(prev.logs) }
@@ -564,6 +697,11 @@ export function useStore() {
     updateClassification,
     softDeleteDefect,
     restoreDefect,
+    addDefectLocation,
+    updateDefectLocation,
+    updateDefectLocationPosition,
+    removeDefectLocation,
+    clearDefectLocations,
     addLog,
     saveFloorImage,
     addFile,

@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore, type Defect } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import DefectPhotos from '@/components/defects/DefectPhotos'
+import FloorLocationMarkers from '@/components/defects/FloorLocationMarkers'
 import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey } from '@/lib/designTokens'
@@ -45,8 +46,10 @@ function fmtKRW(n: number | null | undefined) {
 export default function DefectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, updateDefectStatus, updateClassification, softDeleteDefect, addLog, saveFloorImage } = useStore()
+  const { state, updateDefectStatus, updateClassification, softDeleteDefect, addLog, saveFloorImage, addDefectLocation, updateDefectLocation, updateDefectLocationPosition, removeDefectLocation, clearDefectLocations } = useStore()
   const isTablet = useMediaQuery('(max-width: 1024px)')
+  const mapContainerRef = useRef<HTMLDivElement>(null)
+  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null)
 
   const [showLogModal, setShowLogModal] = useState(false)
   const [logForm, setLogForm] = useState({
@@ -110,6 +113,7 @@ export default function DefectDetailPage() {
   const classificationHistory = state.classificationHistory
     .filter(h => h.defectId === defect.id)
     .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
+  const locations = state.defectLocations.filter(l => l.defectId === defect.id).sort((a, b) => a.id - b.id)
 
   const floorSvg = state.floorPlanImages[defect.floorPlanId ?? 0]
     ? `<img src="${state.floorPlanImages[defect.floorPlanId ?? 0]}" style="width:100%;height:auto;display:block">`
@@ -166,6 +170,28 @@ export default function DefectDetailPage() {
       reason: classifyForm.classificationReason || null,
     })
     if (!result.ok) alert(result.error)
+  }
+
+  function onMapClick(e: React.MouseEvent<HTMLDivElement>) {
+    const cont = mapContainerRef.current
+    if (!cont) return
+    const r = cont.getBoundingClientRect()
+    const x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10
+    const y = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10
+    const newId = addDefectLocation(defect.id, defect.floorPlanId ?? 1, x, y, { createdBy: defect.managerName ?? null })
+    setSelectedLocationId(newId)
+  }
+
+  function removeLocation(locId: number) {
+    if (!confirm('이 위치를 삭제하시겠습니까?')) return
+    removeDefectLocation(locId)
+    if (selectedLocationId === locId) setSelectedLocationId(null)
+  }
+
+  function clearAllLocations() {
+    if (!confirm('등록된 모든 위치를 초기화하시겠습니까?')) return
+    clearDefectLocations(defect.id)
+    setSelectedLocationId(null)
   }
 
   function handleFloorImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -457,22 +483,51 @@ export default function DefectDetailPage() {
                   <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFloorImageUpload} />
                 </label>
               </div>
-              <div style={{ position: 'relative', background: '#f5f7fa' }}>
+              <div
+                ref={mapContainerRef}
+                style={{ position: 'relative', background: '#f5f7fa', cursor: 'crosshair' }}
+                onClick={onMapClick}
+              >
                 <div dangerouslySetInnerHTML={{ __html: floorSvg }} />
-                {defect.locationX != null && (
-                  <div
-                    style={{ position: 'absolute', left: `${defect.locationX}%`, top: `${defect.locationY ?? 0}%`, transform: 'translate(-50%,-50%)', zIndex: 10 }}
-                    title={`${defect.caseNumber}: ${defect.title}`}
-                  >
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', border: '2.5px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(0,0,0,.25)', background: cat?.color || '#635bff', color: '#fff', fontSize: 10 }}>
-                      {cat ? <i className={`fa-solid ${cat.icon}`} style={{ fontSize: 10 }} /> : '●'}
-                    </div>
-                  </div>
+                <FloorLocationMarkers
+                  markers={locations}
+                  onMove={(locId, x, y) => updateDefectLocationPosition(locId, x, y)}
+                  onSelect={setSelectedLocationId}
+                  selectedId={selectedLocationId}
+                  containerRef={mapContainerRef}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', borderTop: '1px solid #f0f4f8' }}>
+                <span style={{ fontSize: '0.72rem', color: '#697386' }}>총 {locations.length}개 위치가 등록되었습니다</span>
+                {locations.length > 0 && (
+                  <button type="button" onClick={clearAllLocations} style={{ fontSize: '0.7rem', color: '#697386', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                    위치 초기화
+                  </button>
                 )}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#697386', padding: '8px 16px', textAlign: 'center', borderTop: '1px solid #f0f4f8' }}>
-                {defect.locationX != null ? `좌표 (${defect.locationX}%, ${defect.locationY}%) — ${defect.locationText || ''}` : '위치 좌표 미설정'}
-              </div>
+              {locations.length > 0 && (
+                <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {locations.map((loc, i) => (
+                    <div
+                      key={loc.id}
+                      onClick={() => setSelectedLocationId(loc.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${selectedLocationId === loc.id ? '#635bff' : '#e3e8ef'}`, cursor: 'pointer' }}
+                    >
+                      <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#DC2626', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
+                      <input
+                        style={{ ...modalInputStyle, border: 'none', padding: '2px 4px', flex: 1 }}
+                        placeholder={`위치 ${i + 1} 라벨`}
+                        value={loc.label ?? ''}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => updateDefectLocation(loc.id, { label: e.target.value })}
+                      />
+                      <button type="button" onClick={e => { e.stopPropagation(); removeLocation(loc.id) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b0bac6', fontSize: '.75rem' }}>
+                        <i className="fa-solid fa-xmark" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Photos & files (증빙자료는 이 섹션을 재사용) */}
