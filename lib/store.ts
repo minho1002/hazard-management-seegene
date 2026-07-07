@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { getStatusTransitionError, type StatusKey } from '@/lib/designTokens'
-import { CURRENT_ROLE, canFinalize } from '@/lib/permissions'
+import { CURRENT_ROLE, canFinalize, canDelete } from '@/lib/permissions'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export interface Category {
@@ -427,18 +427,19 @@ export function useStore() {
     })
   }, [])
 
-  const softDeleteDefect = useCallback((id: number, reason: string, deletedBy: string | null) => {
-    setState(prev => {
-      const deletedAt = new Date().toISOString()
-      const deleteLog: DefectDeleteLog = { id: nextId(prev.deleteLogs), defectId: id, deletedBy, deletedAt, reason }
-      const next: AppState = {
-        ...prev,
-        defects: prev.defects.map(d => d.id === id ? { ...d, deletedAt, deletedBy, deleteReason: reason } : d),
-        deleteLogs: [...prev.deleteLogs, deleteLog],
-      }
-      persistState(next)
-      return next
-    })
+  const softDeleteDefect = useCallback((id: number, reason: string, deletedBy: string | null): { ok: boolean; error?: string } => {
+    if (!canDelete(CURRENT_ROLE)) return { ok: false, error: '삭제는 관리자만 처리할 수 있습니다.' }
+    const current = loadState()
+    const deletedAt = new Date().toISOString()
+    const deleteLog: DefectDeleteLog = { id: nextId(current.deleteLogs), defectId: id, deletedBy, deletedAt, reason }
+    const next: AppState = {
+      ...current,
+      defects: current.defects.map(d => d.id === id ? { ...d, deletedAt, deletedBy, deleteReason: reason } : d),
+      deleteLogs: [...current.deleteLogs, deleteLog],
+    }
+    persistState(next)
+    setState(next)
+    return { ok: true }
   }, [])
 
   const restoreDefect = useCallback((id: number) => {

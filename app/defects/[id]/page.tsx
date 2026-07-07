@@ -11,7 +11,7 @@ import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
-import { canFinalize, CURRENT_ROLE } from '@/lib/permissions'
+import { canFinalize, canEditStatus, canDelete, CURRENT_ROLE } from '@/lib/permissions'
 import { analyzeRecurrence } from '@/lib/recurringAnalysisService'
 
 const RECURRING_LEVEL_OPTIONS = ['반복 아님', '반복 의심', '반복 확정', '재점검 필요', '예방조치 진행중', '예방조치 완료'] as const
@@ -138,7 +138,8 @@ export default function DefectDetailPage() {
     const reason = prompt('삭제 사유를 입력하세요.')
     if (reason == null) return
     if (!reason.trim()) { alert('삭제 사유를 입력해야 합니다.'); return }
-    softDeleteDefect(defect.id, reason.trim(), defect.managerName ?? null)
+    const result = softDeleteDefect(defect.id, reason.trim(), defect.managerName ?? null)
+    if (!result.ok) { alert(result.error); return }
     router.push('/defects')
   }
 
@@ -261,8 +262,10 @@ export default function DefectDetailPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select
-            style={ssStyle}
+            style={{ ...ssStyle, opacity: canEditStatus(CURRENT_ROLE) ? 1 : 0.5, cursor: canEditStatus(CURRENT_ROLE) ? 'pointer' : 'not-allowed' }}
             value={defect.status}
+            disabled={!canEditStatus(CURRENT_ROLE)}
+            title={canEditStatus(CURRENT_ROLE) ? undefined : '조회자/일반등록자는 상태를 변경할 수 없습니다.'}
             onChange={e => handleStatusSelect(e.target.value)}
           >
             {STATUS_FLOW.map(s => (
@@ -275,12 +278,14 @@ export default function DefectDetailPage() {
           >
             <i className="fa-solid fa-pen" /> 수정
           </button>
-          <button
-            onClick={handleDeleteDefect}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #fecdd3', background: '#fef0f4', color: '#be1044', fontFamily: 'inherit' }}
-          >
-            <i className="fa-solid fa-trash" /> 삭제
-          </button>
+          {canDelete(CURRENT_ROLE) && (
+            <button
+              onClick={handleDeleteDefect}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #fecdd3', background: '#fef0f4', color: '#be1044', fontFamily: 'inherit' }}
+            >
+              <i className="fa-solid fa-trash" /> 삭제
+            </button>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import type { Defect, Category, Vendor } from '@/lib/store'
 
-export type ReportType = 'field-analysis' | 'budget-settlement' | 'executive-ppt'
+export type ReportType = 'field-analysis' | 'budget-settlement' | 'executive-ppt' | 'recurring-defects' | 'cost-bearer' | 'defect-classification'
 
 // ── Section types ──────────────────────────────────────────────────────────
 
@@ -36,6 +36,7 @@ export interface GeneratedReport {
   aiOpinionBullets: string[]
   basedOn: 'rule-based' | 'llm'
   metadata: { totalDefects: number; completionRate: number; totalCost: number }
+  preparedBy: string
 }
 
 export interface ReportInput {
@@ -109,6 +110,59 @@ function generateAiOpinion(type: ReportType, input: ReportInput): { opinion: str
           ? `AI 비용 예측 평균 오차율: ${avgErr}% — ${avgErr < 20 ? '예측 신뢰도 양호' : '예측 정확도 개선 필요'}`
           : 'AI 비용 예측 데이터 없음 — 하자 등록 시 AI 분석 활성화 권고',
         `비용 미입력 하자 ${defects.filter(d => d.totalCost === 0).length}건 — 처리 비용 입력 완료 여부 확인 권고`,
+      ],
+    }
+  }
+
+  if (type === 'recurring-defects') {
+    const recurring = defects.filter(d => d.recurrenceCount > 0 || d.recurringLevel === '반복 확정' || d.recurringLevel === '반복 의심')
+    const confirmed = defects.filter(d => d.recurringLevel === '반복 확정' || d.recurrenceCount > 0)
+    const recurringCost = recurring.reduce((s, d) => s + d.totalCost, 0)
+    return {
+      opinion: `전체 ${total}건 중 ${recurring.length}건이 반복 발생 하자로 분류되며(확정 ${confirmed.length}건), 관련 누적 비용은 ${fmtMan(recurringCost)}입니다. 반복 하자는 근본 원인 미해결 가능성이 높아 우선 점검이 필요합니다.`,
+      bullets: [
+        `반복 하자 ${recurring.length}건 (확정 ${confirmed.length}건) — 전체의 ${total > 0 ? Math.round(recurring.length / total * 100) : 0}%`,
+        `반복 하자 관련 누적 비용: ${fmtMan(recurringCost)} — 근본 원인 해결 시 비용 절감 가능`,
+        recurring.length > 0
+          ? `최다 재발 건: ${recurring.slice().sort((a, b) => b.recurrenceCount - a.recurrenceCount)[0]?.title ?? ''} — 우선 정밀점검 권고`
+          : '현재 반복 발생 하자 없음',
+        '반복 확정/해제는 관리자 검토를 거쳐야 하며, 확인되지 않은 반복 의심 건은 재점검 권고',
+      ],
+    }
+  }
+
+  if (type === 'cost-bearer') {
+    const unresolved = defects.filter(d => !d.costBearer || d.costBearer === '미정')
+    const byBearer = ['시공사', '재단', '외주업체'].map(b => ({
+      name: b, cost: defects.filter(d => d.costBearer === b).reduce((s, d) => s + d.totalCost, 0),
+    }))
+    const topBearer = byBearer.slice().sort((a, b) => b.cost - a.cost)[0]
+    return {
+      opinion: `비용 부담 주체가 확정된 하자의 부담 금액은 ${topBearer && topBearer.cost > 0 ? `${topBearer.name} ${fmtMan(topBearer.cost)}이 최대` : '아직 뚜렷한 경향이 없음'}이며, 비용 부담 미정 건이 ${unresolved.length}건 남아있어 확정 작업이 필요합니다.`,
+      bullets: [
+        `비용 부담 미정 ${unresolved.length}건 — 관리자 확정 필요(최종완료 처리 전 확정 필수)`,
+        ...byBearer.filter(b => b.cost > 0).map(b => `${b.name} 부담 예상 금액: ${fmtMan(b.cost)}`),
+        unresolved.length > total * 0.3
+          ? '비용 부담 미정 비율이 높음 — 하자구분/귀책판단 단계 검토 지연 여부 확인 권고'
+          : '비용 부담 확정 진행률 양호',
+      ],
+    }
+  }
+
+  if (type === 'defect-classification') {
+    const defectType = defects.filter(d => d.defectType === '하자사항').length
+    const generalType = defects.filter(d => d.defectType === '일반사항').length
+    const unclassified = defects.filter(d => (d.defectType ?? '확인 필요') === '확인 필요').length
+    const disputed = defects.filter(d => d.reviewStatus === '분쟁가능' || d.reviewStatus === '이견있음').length
+    return {
+      opinion: `전체 ${total}건 중 하자사항 ${defectType}건, 일반사항 ${generalType}건, 확인 필요 ${unclassified}건으로 분류됩니다. 분쟁 가능 또는 이견 있는 건이 ${disputed}건 있어 우선 검토가 필요합니다.`,
+      bullets: [
+        `하자사항(시공사 귀책 가능) ${defectType}건 — 시공사 하자보수 요청 검토`,
+        `일반사항(재단/외주업체 부담) ${generalType}건`,
+        `확인 필요 ${unclassified}건 — 관리자 검토 후 구분 확정 필요`,
+        disputed > 0
+          ? `분쟁 가능/이견 있음 ${disputed}건 — 우선 검토 및 협의 필요`
+          : '분쟁 가능 건 없음 — 양호',
       ],
     }
   }
@@ -333,6 +387,106 @@ function buildExecutiveSections(input: ReportInput): ReportSection[] {
   return [{ id: 'slides', title: '경영진 보고 슬라이드 (5장)', type: 'slide-deck', slides }]
 }
 
+function buildRecurringSections(input: ReportInput): ReportSection[] {
+  const { defects } = input
+  const recurring = defects
+    .filter(d => d.recurrenceCount > 0 || d.recurringLevel === '반복 확정' || d.recurringLevel === '반복 의심')
+    .sort((a, b) => b.recurrenceCount - a.recurrenceCount)
+  const confirmed = defects.filter(d => d.recurringLevel === '반복 확정' || d.recurrenceCount > 0).length
+  const suspected = defects.filter(d => d.recurringLevel === '반복 의심').length
+  const recurringCost = recurring.reduce((s, d) => s + d.totalCost, 0)
+
+  return [
+    {
+      id: 'recurring-kpi', title: '반복 하자 현황', type: 'kpi-grid',
+      kpiItems: [
+        { label: '반복 확정', value: `${confirmed}건`, color: '#be1044' },
+        { label: '반복 의심', value: `${suspected}건`, color: '#d97706' },
+        { label: '관련 누적 비용', value: fmtMan(recurringCost), color: '#635bff' },
+        { label: '전체 대비 비율', value: defects.length > 0 ? `${Math.round(recurring.length / defects.length * 100)}%` : '0%' },
+      ],
+    },
+    {
+      id: 'recurring-table', title: '반복 하자 목록', type: 'table',
+      tableHeaders: ['케이스번호', '하자명', '반복 상태', '재발 횟수', '누적 비용'],
+      tableRows: recurring.slice(0, 20).map((d, i) => ({
+        cells: [d.caseNumber, d.title, d.recurringLevel ?? (d.recurrenceCount > 0 ? '반복 확정' : '반복 의심'), `${d.recurrenceCount}회`, fmtMan(d.totalCost)],
+        highlight: i === 0,
+      })),
+    },
+  ]
+}
+
+function buildCostBearerSections(input: ReportInput): ReportSection[] {
+  const { defects } = input
+  const bearers = ['시공사', '재단', '외주업체', '사용자', '보험/기타', '미정']
+  const data = bearers.map(b => ({
+    name: b,
+    count: defects.filter(d => (d.costBearer || '미정') === b).length,
+    cost: defects.filter(d => (d.costBearer || '미정') === b).reduce((s, d) => s + d.totalCost, 0),
+  }))
+  const maxCount = Math.max(1, ...data.map(b => b.count))
+  const totalCost = defects.reduce((s, d) => s + d.totalCost, 0)
+
+  return [
+    {
+      id: 'bearer-kpi', title: '비용 부담 주체 요약', type: 'kpi-grid',
+      kpiItems: [
+        { label: '총 누적 처리 비용', value: fmtMan(totalCost), color: '#635bff' },
+        ...data.filter(b => b.name !== '미정').slice(0, 3).map(b => ({ label: `${b.name} 부담`, value: fmtMan(b.cost) })),
+      ],
+    },
+    {
+      id: 'bearer-bar', title: '주체별 건수 분포', type: 'bar-list',
+      barItems: data.map(b => ({
+        label: b.name, value: b.count, pct: Math.round(b.count / maxCount * 100),
+        sub: fmtMan(b.cost), color: b.name === '미정' ? '#e11d48' : '#635bff',
+      })),
+    },
+    {
+      id: 'bearer-table', title: '주체별 상세 집계', type: 'table',
+      tableHeaders: ['부담 주체', '건수', '누적 비용'],
+      tableRows: data.map(b => ({ cells: [b.name, `${b.count}건`, b.cost > 0 ? fmtMan(b.cost) : '-'], highlight: b.name === '미정' && b.count > 0 })),
+    },
+  ]
+}
+
+function buildClassificationSections(input: ReportInput): ReportSection[] {
+  const { defects } = input
+  const types = ['하자사항', '일반사항', '확인 필요'] as const
+  const typeData = types.map(t => ({ name: t, count: defects.filter(d => (d.defectType ?? '확인 필요') === t).length }))
+  const maxTypeCount = Math.max(1, ...typeData.map(t => t.count))
+
+  const contractorList = defects.filter(d => d.responsibilityType === '시공사 귀책')
+  const foundationList = defects.filter(d => d.costBearer === '재단')
+  const vendorList = defects.filter(d => d.costBearer === '외주업체')
+
+  return [
+    {
+      id: 'class-bar', title: '하자사항/일반사항/확인필요 비율', type: 'bar-list',
+      barItems: typeData.map(t => ({
+        label: t.name, value: t.count, pct: Math.round(t.count / maxTypeCount * 100),
+        color: t.name === '하자사항' ? '#e11d48' : t.name === '일반사항' ? '#059669' : '#697386',
+      })),
+    },
+    {
+      id: 'contractor-table', title: '시공사 귀책 가능 하자 목록', type: 'table',
+      tableHeaders: ['케이스번호', '하자명', '누적 비용'],
+      tableRows: contractorList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtMan(d.totalCost)] })),
+    },
+    {
+      id: 'foundation-table', title: '재단 부담 예상 하자 목록', type: 'table',
+      tableHeaders: ['케이스번호', '하자명', '누적 비용'],
+      tableRows: foundationList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtMan(d.totalCost)] })),
+    },
+    {
+      id: 'vendor-table', title: '외주업체 확인 필요 하자 목록', type: 'table',
+      tableHeaders: ['케이스번호', '하자명', '누적 비용'],
+      tableRows: vendorList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtMan(d.totalCost)] })),
+    },
+  ]
+}
+
 // ── Entry point (swap mockGenerate → realGenerate for LLM) ────────────────
 
 export async function generateReport(type: ReportType, input: ReportInput): Promise<GeneratedReport> {
@@ -344,15 +498,21 @@ export async function generateReport(type: ReportType, input: ReportInput): Prom
 function mockGenerate(type: ReportType, input: ReportInput): GeneratedReport {
   const now = new Date()
   const TITLES: Record<ReportType, [string, string]> = {
-    'field-analysis':    ['분야별 분석 보고서',  '카테고리별 하자 발생 현황 및 비용 분석'],
-    'budget-settlement': ['예산 정산 보고서',    '처리 비용 집행 현황 및 AI 예측 정확도 분석'],
-    'executive-ppt':     ['경영진 보고용 PT',    '시설 관리 종합 현황 및 전략적 권고사항'],
+    'field-analysis':         ['분야별 분석 보고서',        '카테고리별 하자 발생 현황 및 비용 분석'],
+    'budget-settlement':      ['예산 정산 보고서',          '처리 비용 집행 현황 및 AI 예측 정확도 분석'],
+    'executive-ppt':          ['경영진 보고용 PT',          '시설 관리 종합 현황 및 전략적 권고사항'],
+    'recurring-defects':      ['반복 하자 보고서',          '반복 발생 하자 현황 및 근본원인 재점검 권고'],
+    'cost-bearer':            ['비용 부담 주체별 보고서',    '시공사·재단·외주업체 부담 예상 금액 및 미정 현황'],
+    'defect-classification':  ['하자사항/일반사항 구분 보고서', '귀책 구분 및 관리자 검토 필요 항목'],
   }
   const [title, subtitle] = TITLES[type]
   const { opinion, bullets } = generateAiOpinion(type, input)
   const sections =
-    type === 'field-analysis'    ? buildFieldAnalysisSections(input) :
-    type === 'budget-settlement' ? buildBudgetSections(input) :
+    type === 'field-analysis'        ? buildFieldAnalysisSections(input) :
+    type === 'budget-settlement'     ? buildBudgetSections(input) :
+    type === 'recurring-defects'     ? buildRecurringSections(input) :
+    type === 'cost-bearer'           ? buildCostBearerSections(input) :
+    type === 'defect-classification' ? buildClassificationSections(input) :
     buildExecutiveSections(input)
 
   return {
@@ -363,6 +523,7 @@ function mockGenerate(type: ReportType, input: ReportInput): GeneratedReport {
     aiOpinion: opinion,
     aiOpinionBullets: bullets,
     basedOn: 'rule-based',
+    preparedBy: '시설관리팀',
     metadata: {
       totalDefects: input.defects.length,
       completionRate: input.defects.length > 0

@@ -7,13 +7,6 @@ import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 
-const STATUS_OPTIONS = [
-  { value: 'open', label: '접수' },
-  { value: 'in_progress', label: '처리중' },
-  { value: 'hold', label: '보류' },
-  { value: 'completed', label: '완료' },
-]
-
 export default function EditDefectPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -33,7 +26,6 @@ export default function EditDefectPage() {
     locationText: defectRaw?.locationText ?? '',
     categoryId: defectRaw?.categoryId ?? ('' as string | number),
     severity: defectRaw?.severity ?? 'medium',
-    status: defectRaw?.status ?? 'open',
     costType: defectRaw?.costType ?? 'our',
     reporterName: defectRaw?.reporterName ?? '',
     assignedVendorId: defectRaw?.assignedVendorId ?? ('' as string | number),
@@ -100,7 +92,6 @@ export default function EditDefectPage() {
       locationText: form.locationText || null,
       categoryId: form.categoryId ? Number(form.categoryId) : null,
       severity: form.severity,
-      status: form.status,
       costType: form.costType,
       reporterName: form.reporterName || null,
       assignedVendorId: form.assignedVendorId ? Number(form.assignedVendorId) : null,
@@ -168,12 +159,6 @@ export default function EditDefectPage() {
                       <option value="medium">보통</option>
                       <option value="high">높음</option>
                       <option value="critical">긴급</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelCls}>상태</label>
-                    <select style={selectCls} value={form.status} onChange={e => setField('status', e.target.value)}>
-                      {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <div>
@@ -271,7 +256,7 @@ export default function EditDefectPage() {
             <div style={{ background: 'rgba(99,91,255,.09)', border: '1px solid rgba(99,91,255,.2)', borderRadius: 12, padding: 16, marginBottom: 14 }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#635bff', marginBottom: 8 }}>수정 안내</div>
               <ul style={{ fontSize: '0.73rem', color: '#4f46e5', lineHeight: 2, listStyle: 'none' }}>
-                <li>• 상태(접수/처리중/보류/완료)도 함께 변경할 수 있습니다</li>
+                <li>• 상태 변경은 하자 상세 화면에서 진행합니다</li>
                 <li>• 도면을 다시 클릭하면 위치가 이동합니다</li>
                 <li>• 사진 추가/삭제는 상세 페이지에서 진행합니다</li>
               </ul>

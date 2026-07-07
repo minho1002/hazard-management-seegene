@@ -47,6 +47,30 @@ const REPORT_TYPES: {
     features: ['시설 건강도 점수', '주요 위험 현황', '예산 집행 요약', '향후 계획 및 권고사항'],
     color: '#d97706', bg: 'rgba(217,119,6,.07)', border: 'rgba(217,119,6,.25)',
   },
+  {
+    type: 'recurring-defects',
+    icon: 'fa-solid fa-rotate',
+    title: '반복 하자 보고서',
+    desc: '반복 발생 하자 현황·근본원인 재점검 권고',
+    features: ['반복 확정/의심 건수', '반복 관련 누적 비용', '반복 하자 목록', '재점검 권고사항'],
+    color: '#be1044', bg: 'rgba(190,16,68,.07)', border: 'rgba(190,16,68,.25)',
+  },
+  {
+    type: 'cost-bearer',
+    icon: 'fa-solid fa-scale-balanced',
+    title: '비용 부담 주체별 보고서',
+    desc: '시공사·재단·외주업체 부담 예상 금액·미정 현황',
+    features: ['주체별 건수·금액 집계', '비용 부담 미정 건수', '주체별 상세 테이블', '확정 필요 항목 권고'],
+    color: '#0d9167', bg: 'rgba(13,145,103,.07)', border: 'rgba(13,145,103,.25)',
+  },
+  {
+    type: 'defect-classification',
+    icon: 'fa-solid fa-code-compare',
+    title: '하자사항/일반사항 구분 보고서',
+    desc: '귀책 구분 현황 및 관리자 검토 필요 항목',
+    features: ['하자구분 비율', '시공사 귀책 가능 목록', '재단 부담 예상 목록', '외주업체 확인 필요 목록'],
+    color: '#635bff', bg: 'rgba(99,91,255,.07)', border: 'rgba(99,91,255,.25)',
+  },
 ]
 
 const SLIDE_HEADER_COLORS = ['#1e3a5f', '#9f1239', '#3730a3', '#065f46', '#78350f']
@@ -169,7 +193,7 @@ export default function AiReportPage() {
     setReport(null)
     try {
       const result = await generateReport(selectedType, {
-        defects: state.defects,
+        defects: state.defects.filter(d => !d.deletedAt),
         categories: state.categories,
         vendors: state.vendors,
       })
@@ -306,6 +330,7 @@ export default function AiReportPage() {
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>{report.period}</span>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>생성: {report.generatedAt}</span>
+                  <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>작성자: {report.preparedBy}</span>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: 'rgba(99,91,255,.1)', borderRadius: 99, color: '#635bff', fontWeight: 600 }}>
                     ✨ {report.basedOn === 'rule-based' ? 'Rule-Based AI' : 'LLM 분석'}
                   </span>

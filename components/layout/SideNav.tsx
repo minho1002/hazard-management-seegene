@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useState } from 'react'
+import { CURRENT_ROLE, canRegister } from '@/lib/permissions'
+import RoleSwitcher from './RoleSwitcher'
 
 const menuItems = [
   { href: '/dashboard', label: '대시보드', icon: 'fa-solid fa-table-cells-large' },
@@ -16,6 +18,7 @@ const analysisItems = [
   { href: '/reports',    label: '보고서',       icon: 'fa-solid fa-chart-bar' },
   { href: '/reports/ai', label: 'AI 보고서',    icon: 'fa-solid fa-wand-magic-sparkles' },
   { href: '/ai',         label: 'AI 어시스턴트', icon: 'fa-solid fa-robot' },
+  { href: '/audit',      label: '감사이력',     icon: 'fa-solid fa-clipboard-list' },
 ]
 
 function NavItem({ href, label, icon, active }: { href: string; label: string; icon: string; active: boolean }) {
@@ -98,7 +101,7 @@ export default function SideNav() {
         >
           메뉴
         </p>
-        {menuItems.map(item => (
+        {menuItems.filter(item => item.href !== '/defects/new' || canRegister(CURRENT_ROLE)).map(item => (
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))}
 
@@ -112,6 +115,11 @@ export default function SideNav() {
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))}
       </nav>
+
+      {/* Role Switcher (8단계 — 로그인 없는 역할 전환기) */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12 }}>
+        <RoleSwitcher />
+      </div>
 
       {/* Footer */}
       <div
