@@ -98,8 +98,11 @@ export function getStatusTransitionError(
 ): string | null {
   if (target === defect.status) return null
 
-  if (target === 'completed' && !canFinalize(ctx.role)) {
-    return '최종완료는 관리자만 처리할 수 있습니다.'
+  if (target === 'completed') {
+    if (!canFinalize(ctx.role)) return '최종완료는 관리자만 처리할 수 있습니다.'
+    if (!defect.costBearer || defect.costBearer === '미정') {
+      return '비용 부담 주체를 확정해야 최종완료할 수 있습니다.'
+    }
   }
 
   if (target === 'action_done') {

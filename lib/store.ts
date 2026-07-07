@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { getStatusTransitionError, type StatusKey } from '@/lib/designTokens'
-import { CURRENT_ROLE } from '@/lib/permissions'
+import { CURRENT_ROLE, canFinalize } from '@/lib/permissions'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export interface Category {
@@ -92,6 +92,11 @@ export interface Defect {
   department?: string | null
   expectedCompletionDate?: string | null
   estimatedCost?: number | null
+  // 귀책판단 확장 필드 (Phase 2 신규 — 5단계)
+  warrantyStatus?: '보증기간 내' | '보증기간 외' | '확인 필요'
+  isWarrantyClaimTarget?: boolean
+  relatedContract?: string | null
+  classificationReason?: string | null
 }
 
 export interface DefectStatusHistory {
@@ -110,6 +115,20 @@ export interface DefectDeleteLog {
   deletedBy: string | null
   deletedAt: string
   reason: string
+}
+
+// 확정 시점의 하자구분/귀책판단 스냅샷 (필드별 diff가 아니라 확정 이벤트 단위)
+export interface DefectClassificationHistory {
+  id: number
+  defectId: number
+  changedBy: string | null
+  changedAt: string
+  defectType: string
+  responsibilityType: string | null
+  costBearer: string | null
+  reviewStatus: string | null
+  costApprovalStatus: string | null
+  reason: string | null
 }
 
 export interface DefectLog {
@@ -145,6 +164,7 @@ export interface AppState {
   files: DefectFile[]
   statusHistory: DefectStatusHistory[]
   deleteLogs: DefectDeleteLog[]
+  classificationHistory: DefectClassificationHistory[]
 }
 
 // ── SEED DATA ─────────────────────────────────────────────────────────────
@@ -179,6 +199,7 @@ const SEED: AppState = {
   files: [],
   statusHistory: [],
   deleteLogs: [],
+  classificationHistory: [],
   defects: [
     { id: 1, caseNumber: 'DEF-2024-001', title: '지하1층 주차장 누수', description: '주차장 천장에서 물이 새고 있음. 비가 올 때마다 심해짐', buildingId: 1, floorPlanId: 2, locationX: 35.5, locationY: 60.2, locationText: '지하1층 주차장 A구역', categoryId: 1, severity: 'high', status: 'in_progress', costType: 'gukbo', reporterName: '홍길동(시설팀)', assignedVendorId: 1, managerName: '김관리', recurrenceCount: 2, firstOccurredAt: '2024-03-15', lastOccurredAt: '2024-11-20', totalCost: 850000, createdAt: '2026-04-16' },
     { id: 2, caseNumber: 'DEF-2024-002', title: '3층 전기실 분전반 이상', description: '분전반에서 이상 소음 발생, 주기적 점검 필요', buildingId: 1, floorPlanId: 5, locationX: 70, locationY: 30, locationText: '3층 전기실', categoryId: 2, severity: 'critical', status: 'completed', costType: 'our', reporterName: '이시설(시설팀)', assignedVendorId: 3, managerName: '김관리', recurrenceCount: 0, firstOccurredAt: '2024-04-10', lastOccurredAt: '2024-09-05', totalCost: 1200000, createdAt: '2026-04-16' },
@@ -218,6 +239,7 @@ function loadState(): AppState {
       if (!parsed.files) parsed.files = []
       if (!parsed.statusHistory) parsed.statusHistory = []
       if (!parsed.deleteLogs) parsed.deleteLogs = []
+      if (!parsed.classificationHistory) parsed.classificationHistory = []
       // Merge new floor plans from SEED in case they are missing
       SEED.floorPlans.forEach(fp => {
         if (!parsed.floorPlans.find(f => f.id === fp.id)) parsed.floorPlans.push(fp)
@@ -395,6 +417,43 @@ export function useStore() {
     return { ok: true }
   }, [])
 
+  const updateClassification = useCallback((id: number, patch: Partial<Pick<Defect,
+    'defectType' | 'responsibilityType' | 'costBearer' | 'reviewStatus' | 'costApprovalStatus' |
+    'warrantyStatus' | 'isWarrantyClaimTarget' | 'relatedContract' | 'classificationReason'
+  >>, opts: { changedBy: string | null; reason?: string | null }): { ok: boolean; error?: string } => {
+    const current = loadState()
+    const defect = current.defects.find(d => d.id === id)
+    if (!defect) return { ok: false, error: '하자를 찾을 수 없습니다.' }
+
+    const wantsFinalize = patch.reviewStatus === '확정' || patch.costApprovalStatus === '승인완료'
+    if (wantsFinalize && !canFinalize(CURRENT_ROLE)) {
+      return { ok: false, error: '하자구분/귀책판단 확정은 관리자만 처리할 수 있습니다.' }
+    }
+
+    const merged = { ...defect, ...patch }
+    const history: DefectClassificationHistory = {
+      id: nextId(current.classificationHistory),
+      defectId: id,
+      changedBy: opts.changedBy,
+      changedAt: new Date().toISOString(),
+      defectType: merged.defectType ?? '확인 필요',
+      responsibilityType: merged.responsibilityType ?? null,
+      costBearer: merged.costBearer ?? null,
+      reviewStatus: merged.reviewStatus ?? null,
+      costApprovalStatus: merged.costApprovalStatus ?? null,
+      reason: opts.reason ?? null,
+    }
+
+    const next: AppState = {
+      ...current,
+      defects: current.defects.map(d => d.id === id ? { ...d, ...patch } : d),
+      classificationHistory: [...current.classificationHistory, history],
+    }
+    persistState(next)
+    setState(next)
+    return { ok: true }
+  }, [])
+
   const addLog = useCallback((logData: Omit<DefectLog, 'id'>) => {
     setState(prev => {
       const log: DefectLog = { ...logData, id: nextId(prev.logs) }
@@ -460,6 +519,7 @@ export function useStore() {
     addDefectAndGetId,
     updateDefect,
     updateDefectStatus,
+    updateClassification,
     softDeleteDefect,
     restoreDefect,
     addLog,

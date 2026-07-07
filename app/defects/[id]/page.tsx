@@ -1,15 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useStore } from '@/lib/store'
+import { useStore, type Defect } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import DefectPhotos from '@/components/defects/DefectPhotos'
 import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
+import { canFinalize, CURRENT_ROLE } from '@/lib/permissions'
+
+const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
+const RESPONSIBILITY_OPTIONS = ['시공사 귀책', '재단/운영측 부담', '외주업체 부담', '사용자 과실', '소모품/노후', '원인 불명', '분쟁 가능']
+const COST_BEARER_OPTIONS = ['시공사', '재단', '외주업체', '사용자', '보험/기타', '미정']
+const WARRANTY_OPTIONS = ['보증기간 내', '보증기간 외', '확인 필요'] as const
+const REVIEW_STATUS_OPTIONS = ['미검토', '검토중', '확정', '이견있음', '분쟁가능', '재검토필요'] as const
+const COST_APPROVAL_OPTIONS = ['미승인', '승인대기', '승인완료', '반려', '협의중'] as const
 
 const AI_RISK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   낮음: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
@@ -37,7 +45,7 @@ function fmtKRW(n: number | null | undefined) {
 export default function DefectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, updateDefectStatus, softDeleteDefect, addLog, saveFloorImage } = useStore()
+  const { state, updateDefectStatus, updateClassification, softDeleteDefect, addLog, saveFloorImage } = useStore()
   const isTablet = useMediaQuery('(max-width: 1024px)')
 
   const [showLogModal, setShowLogModal] = useState(false)
@@ -52,6 +60,34 @@ export default function DefectDetailPage() {
   const [actionDoneForm, setActionDoneForm] = useState({ actionContent: '', actualCost: '' })
 
   const defectRaw = state.defects.find(d => d.id === parseInt(id))
+
+  const [classifyForm, setClassifyForm] = useState({
+    defectType: '확인 필요',
+    responsibilityType: '원인 불명',
+    costBearer: '미정',
+    reviewStatus: '미검토',
+    costApprovalStatus: '미승인',
+    warrantyStatus: '확인 필요',
+    isWarrantyClaimTarget: false,
+    relatedContract: '',
+    classificationReason: '',
+  })
+
+  useEffect(() => {
+    if (!defectRaw) return
+    setClassifyForm({
+      defectType: defectRaw.defectType ?? '확인 필요',
+      responsibilityType: defectRaw.responsibilityType ?? '원인 불명',
+      costBearer: defectRaw.costBearer ?? '미정',
+      reviewStatus: defectRaw.reviewStatus ?? '미검토',
+      costApprovalStatus: defectRaw.costApprovalStatus ?? '미승인',
+      warrantyStatus: defectRaw.warrantyStatus ?? '확인 필요',
+      isWarrantyClaimTarget: defectRaw.isWarrantyClaimTarget ?? false,
+      relatedContract: defectRaw.relatedContract ?? '',
+      classificationReason: '',
+    })
+  }, [defectRaw?.id, defectRaw?.defectType, defectRaw?.responsibilityType, defectRaw?.costBearer, defectRaw?.reviewStatus, defectRaw?.costApprovalStatus, defectRaw?.warrantyStatus, defectRaw?.isWarrantyClaimTarget, defectRaw?.relatedContract])
+
   if (!defectRaw) {
     return (
       <div style={{ padding: 52, textAlign: 'center', color: '#697386' }}>
@@ -69,6 +105,9 @@ export default function DefectDetailPage() {
   const building = state.buildings.find(b => b.id === defect.buildingId)
   const logs = state.logs.filter(l => l.defectId === defect.id).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime())
   const statusHistory = state.statusHistory
+    .filter(h => h.defectId === defect.id)
+    .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
+  const classificationHistory = state.classificationHistory
     .filter(h => h.defectId === defect.id)
     .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
 
@@ -107,6 +146,28 @@ export default function DefectDetailPage() {
     if (applyStatusChange('action_done', actionDoneForm)) setShowActionDoneModal(false)
   }
 
+  function setClassifyField(k: string, v: string | boolean) {
+    setClassifyForm(f => ({ ...f, [k]: v }))
+  }
+
+  function submitClassification() {
+    const result = updateClassification(defect.id, {
+      defectType: classifyForm.defectType as Defect['defectType'],
+      responsibilityType: classifyForm.responsibilityType,
+      costBearer: classifyForm.costBearer,
+      reviewStatus: classifyForm.reviewStatus as Defect['reviewStatus'],
+      costApprovalStatus: classifyForm.costApprovalStatus as Defect['costApprovalStatus'],
+      warrantyStatus: classifyForm.warrantyStatus as Defect['warrantyStatus'],
+      isWarrantyClaimTarget: classifyForm.isWarrantyClaimTarget,
+      relatedContract: classifyForm.relatedContract || null,
+      classificationReason: classifyForm.classificationReason || null,
+    }, {
+      changedBy: defect.managerName ?? null,
+      reason: classifyForm.classificationReason || null,
+    })
+    if (!result.ok) alert(result.error)
+  }
+
   function handleFloorImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -136,6 +197,8 @@ export default function DefectDetailPage() {
   const card: React.CSSProperties = { background: '#fff', border: '1px solid #e3e8ef', borderRadius: 12, boxShadow: '0 1px 3px rgba(10,37,64,0.06)', overflow: 'hidden' }
   const ssStyle: React.CSSProperties = { border: '1.5px solid #e3e8ef', borderRadius: 7, padding: '6px 26px 6px 10px', fontSize: '0.8rem', fontFamily: 'inherit', color: '#0a2540', background: '#fff', cursor: 'pointer', outline: 'none', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M0 0l4.5 5L9 0z' fill='%23697386'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', fontWeight: 500 }
   const modalInputStyle: React.CSSProperties = { border: '1px solid #e3e8ef', borderRadius: 7, padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'inherit', color: '#0a2540', background: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box' }
+  const classifySelectStyle: React.CSSProperties = { ...modalInputStyle, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M0 0l4.5 5L9 0z' fill='%23697386'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 28, cursor: 'pointer' }
+  const canConfirmClassification = canFinalize(CURRENT_ROLE)
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -288,6 +351,103 @@ export default function DefectDetailPage() {
               </div>
             )}
 
+            {/* 하자 구분 및 귀책 판단 */}
+            <div style={{ ...card, marginTop: 16 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386' }}>하자 구분 및 귀책 판단</span>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#f3f5f7', color: '#425466' }}>{defect.defectType ?? '확인 필요'}</span>
+              </div>
+              <div style={{ padding: 16 }}>
+                {defect.aiClassification && (
+                  <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(99,91,255,.05)', border: '1px solid rgba(99,91,255,.15)', borderRadius: 8, fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>
+                    <strong style={{ color: '#635bff' }}><i className="fa-solid fa-wand-magic-sparkles" style={{ fontSize: 9, marginRight: 4 }} />AI 추천</strong> (신뢰도 {defect.aiClassification.confidence}): {defect.aiClassification.reasoning}
+                  </div>
+                )}
+                {canConfirmClassification ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>하자 구분</label>
+                      <select style={classifySelectStyle} value={classifyForm.defectType} onChange={e => setClassifyField('defectType', e.target.value)}>
+                        {DEFECT_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>귀책 구분</label>
+                      <select style={classifySelectStyle} value={classifyForm.responsibilityType} onChange={e => setClassifyField('responsibilityType', e.target.value)}>
+                        {RESPONSIBILITY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.8rem', color: '#425466' }}>귀책 구분: {defect.responsibilityType || '미정'}</div>
+                )}
+              </div>
+            </div>
+
+            {/* 비용 처리 정보 */}
+            <div style={{ ...card, marginTop: 16 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f4f8' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386' }}>비용 처리 정보</span>
+              </div>
+              <div style={{ padding: 16 }}>
+                {canConfirmClassification ? (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>비용 부담 주체</label>
+                        <select style={classifySelectStyle} value={classifyForm.costBearer} onChange={e => setClassifyField('costBearer', e.target.value)}>
+                          {COST_BEARER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>비용 승인 상태</label>
+                        <select style={classifySelectStyle} value={classifyForm.costApprovalStatus} onChange={e => setClassifyField('costApprovalStatus', e.target.value)}>
+                          {COST_APPROVAL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>보증기간 여부</label>
+                        <select style={classifySelectStyle} value={classifyForm.warrantyStatus} onChange={e => setClassifyField('warrantyStatus', e.target.value)}>
+                          {WARRANTY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>검토 상태</label>
+                        <select style={classifySelectStyle} value={classifyForm.reviewStatus} onChange={e => setClassifyField('reviewStatus', e.target.value)}>
+                          {REVIEW_STATUS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="checkbox" id="isWarrantyClaimTarget" checked={classifyForm.isWarrantyClaimTarget} onChange={e => setClassifyField('isWarrantyClaimTarget', e.target.checked)} />
+                        <label htmlFor="isWarrantyClaimTarget" style={{ fontSize: '0.78rem', color: '#425466', cursor: 'pointer' }}>하자보수 청구 대상</label>
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>관련 계약/공종</label>
+                        <input style={modalInputStyle} placeholder="예: 방수공사 계약 (2024)" value={classifyForm.relatedContract} onChange={e => setClassifyField('relatedContract', e.target.value)} />
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>판단 근거</label>
+                        <textarea style={{ ...modalInputStyle, resize: 'vertical', lineHeight: 1.6 }} rows={2} placeholder="확정 사유를 입력하세요." value={classifyForm.classificationReason} onChange={e => setClassifyField('classificationReason', e.target.value)} />
+                      </div>
+                    </div>
+                    <button
+                      onClick={submitClassification}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #635bff', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}
+                    >
+                      <i className="fa-solid fa-check" /> 관리자 최종 확정
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem', color: '#425466' }}>
+                    <div>비용 부담 주체: {defect.costBearer || '미정'}</div>
+                    <div>비용 승인 상태: {defect.costApprovalStatus || '미승인'}</div>
+                    <div>보증기간 여부: {defect.warrantyStatus || '확인 필요'}</div>
+                    <div>검토 상태: {defect.reviewStatus || '미검토'}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Floor Map */}
             <div style={{ ...card, marginTop: 16 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -315,7 +475,10 @@ export default function DefectDetailPage() {
               </div>
             </div>
 
-            {/* Photos & files */}
+            {/* Photos & files (증빙자료는 이 섹션을 재사용 — 9종 첨부구분·비교 UI는 3단계에서 확장) */}
+            <div style={{ fontSize: '0.7rem', color: '#b0bac6', marginTop: 16, marginBottom: -8 }}>
+              증빙자료(견적서/작업확인서 등)는 아래 사진/첨부파일 영역에서 관리합니다.
+            </div>
             <DefectPhotos defectId={defect.id} />
           </div>
 
@@ -378,6 +541,29 @@ export default function DefectDetailPage() {
                         {' → '}
                         <span style={{ fontWeight: 600, color: '#0a2540' }}>{STATUS_META[h.toStatus as StatusKey]?.label ?? h.toStatus}</span>
                       </div>
+                      {h.reason && <div style={{ fontSize: '0.7rem', color: '#697386', marginTop: 2 }}>{h.reason}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 판단 이력 */}
+          <div style={{ ...card, height: 'fit-content' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f0f4f8' }}>
+              <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>판단 이력</h3>
+            </div>
+            <div style={{ padding: '4px 18px 18px' }}>
+              {classificationHistory.length === 0 ? (
+                <p style={{ color: '#697386', fontSize: '0.78rem', textAlign: 'center', padding: 20 }}>판단 이력이 없습니다.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10 }}>
+                  {classificationHistory.map(h => (
+                    <div key={h.id} style={{ fontSize: '0.75rem', color: '#425466' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#697386', marginBottom: 2 }}>{fmtDT(h.changedAt)}</div>
+                      <div style={{ fontWeight: 600, color: '#0a2540' }}>{h.defectType} · {h.responsibilityType || '미정'} · {h.costBearer || '미정'}</div>
+                      <div style={{ fontSize: '0.68rem', color: '#697386' }}>검토상태 {h.reviewStatus || '미검토'} / 비용승인 {h.costApprovalStatus || '미승인'}</div>
                       {h.reason && <div style={{ fontSize: '0.7rem', color: '#697386', marginTop: 2 }}>{h.reason}</div>}
                     </div>
                   ))}

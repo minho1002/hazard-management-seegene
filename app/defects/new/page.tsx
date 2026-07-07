@@ -10,6 +10,12 @@ import type { CostPrediction } from '@/lib/costPredictionService'
 import { formatKRW } from '@/lib/format'
 import { compressImage } from '@/lib/imageCompress'
 import { useMediaQuery } from '@/lib/useMediaQuery'
+import { suggestClassification, type ClassificationSuggestion } from '@/lib/defectClassificationService'
+
+const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
+const RESPONSIBILITY_OPTIONS = ['시공사 귀책', '재단/운영측 부담', '외주업체 부담', '사용자 과실', '소모품/노후', '원인 불명', '분쟁 가능']
+const COST_BEARER_OPTIONS = ['시공사', '재단', '외주업체', '사용자', '보험/기타', '미정']
+const WARRANTY_OPTIONS = ['보증기간 내', '보증기간 외', '확인 필요'] as const
 
 const CONFIDENCE_COLORS: Record<string, { bg: string; text: string }> = {
   낮음: { bg: '#f3f5f7', text: '#697386' },
@@ -54,6 +60,13 @@ export default function NewDefectPage() {
     department: '',
     expectedCompletionDate: '',
     estimatedCost: '',
+    defectType: '확인 필요' as typeof DEFECT_TYPE_OPTIONS[number],
+    responsibilityType: '원인 불명',
+    costBearer: '미정',
+    warrantyStatus: '확인 필요' as typeof WARRANTY_OPTIONS[number],
+    isWarrantyClaimTarget: false,
+    relatedContract: '',
+    classificationReason: '',
   })
 
   const [aiMemo, setAiMemo] = useState('')
@@ -62,10 +75,11 @@ export default function NewDefectPage() {
   const [aiResult, setAiResult] = useState<AiAnalysisResult | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [costPrediction, setCostPrediction] = useState<CostPrediction | null>(null)
+  const [classificationSuggestion, setClassificationSuggestion] = useState<ClassificationSuggestion | null>(null)
 
   const floorPlans = state.floorPlans.filter(f => f.buildingId === form.buildingId)
 
-  function setField(k: string, v: string | number | null) {
+  function setField(k: string, v: string | number | null | boolean) {
     setForm(f => ({ ...f, [k]: v }))
   }
 
@@ -160,6 +174,21 @@ export default function NewDefectPage() {
       predictedCostAvg: costPrediction?.estimatedCostAvg ?? null,
       predictedCostMax: costPrediction?.estimatedCostMax ?? null,
       predictionConfidence: costPrediction?.confidence ?? null,
+      defectType: form.defectType,
+      responsibilityType: form.responsibilityType || null,
+      costBearer: form.costBearer || null,
+      warrantyStatus: form.warrantyStatus,
+      isWarrantyClaimTarget: form.isWarrantyClaimTarget,
+      relatedContract: form.relatedContract || null,
+      classificationReason: form.classificationReason || null,
+      aiClassification: classificationSuggestion ? {
+        defectType: classificationSuggestion.defectType,
+        responsibilityType: classificationSuggestion.responsibilityType,
+        costBearer: classificationSuggestion.costBearer,
+        confidence: classificationSuggestion.confidence,
+        reasoning: classificationSuggestion.reasoning,
+        suggestedAt: new Date().toISOString(),
+      } : null,
     })
     for (const file of photoFiles) {
       const dataUrl = await compressImage(file)
@@ -202,6 +231,20 @@ export default function NewDefectPage() {
         locationText: result.location,
       })
       setCostPrediction(prediction)
+      // AI 하자구분/귀책 추천 (관리자 확정 전까지는 추천값일 뿐)
+      const suggestion = suggestClassification({
+        causeCategory: result.causeCategory,
+        rootCause: result.rootCause,
+        title: `${result.location} ${result.symptom}`,
+        description: result.aiSummary,
+      })
+      setClassificationSuggestion(suggestion)
+      setForm(f => ({
+        ...f,
+        defectType: suggestion.defectType,
+        responsibilityType: suggestion.responsibilityType,
+        costBearer: suggestion.costBearer,
+      }))
     } catch (_e) {
       setAiError('AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.')
     } finally {
@@ -407,6 +450,64 @@ export default function NewDefectPage() {
                     선택 좌표: ({form.locationX}%, {form.locationY}%)
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* 하자 구분 및 귀책 판단 */}
+            <div style={card}>
+              <div style={{ padding: '12px 18px', background: '#fafbfc', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#425466' }}>하자 구분 및 귀책 판단</div>
+                {classificationSuggestion && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.62rem', fontWeight: 700, color: '#635bff', background: 'rgba(99,91,255,.09)', padding: '2px 8px', borderRadius: 20 }}>
+                    <i className="fa-solid fa-wand-magic-sparkles" style={{ fontSize: 9 }} /> AI 추천
+                  </span>
+                )}
+              </div>
+              <div style={{ padding: 18 }}>
+                {classificationSuggestion && (
+                  <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(99,91,255,.05)', border: '1px solid rgba(99,91,255,.15)', borderRadius: 8, fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>
+                    <strong style={{ color: '#635bff' }}>AI 추천 근거</strong> (신뢰도 {classificationSuggestion.confidence}): {classificationSuggestion.reasoning} 최종 확정은 등록 후 상세 화면에서 관리자가 진행합니다.
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div>
+                    <label style={labelCls}>하자 구분</label>
+                    <select style={selectCls} value={form.defectType} onChange={e => setField('defectType', e.target.value)}>
+                      {DEFECT_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>귀책 구분</label>
+                    <select style={selectCls} value={form.responsibilityType} onChange={e => setField('responsibilityType', e.target.value)}>
+                      {RESPONSIBILITY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>비용 부담 주체</label>
+                    <select style={selectCls} value={form.costBearer} onChange={e => setField('costBearer', e.target.value)}>
+                      {COST_BEARER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>보증기간 여부</label>
+                    <select style={selectCls} value={form.warrantyStatus} onChange={e => setField('warrantyStatus', e.target.value)}>
+                      {WARRANTY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" id="isWarrantyClaimTarget" checked={form.isWarrantyClaimTarget} onChange={e => setField('isWarrantyClaimTarget', e.target.checked)} />
+                    <label htmlFor="isWarrantyClaimTarget" style={{ fontSize: '0.78rem', color: '#425466', cursor: 'pointer' }}>하자보수 청구 대상</label>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={labelCls}>관련 계약/공종</label>
+                    <input style={inputCls} placeholder="예: 방수공사 계약 (2024)" value={form.relatedContract} onChange={e => setField('relatedContract', e.target.value)} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={labelCls}>판단 근거</label>
+                    <textarea style={{ ...inputCls, resize: 'vertical', lineHeight: 1.6 }} rows={2} placeholder="하자구분/귀책 판단의 근거를 입력하세요." value={form.classificationReason} onChange={e => setField('classificationReason', e.target.value)} />
+                  </div>
+                </div>
+                <p style={{ fontSize: '.68rem', color: '#b0bac6', marginTop: 10 }}>귀책·비용부담 판단은 민감한 결정이므로 최종 확정은 등록 후 상세 화면에서 관리자 권한으로 처리합니다.</p>
               </div>
             </div>
 
