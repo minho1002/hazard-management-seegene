@@ -12,7 +12,7 @@ import { Bar, Line } from 'react-chartjs-2'
 import { useStore } from '@/lib/store'
 import PriorityStatCard from '@/components/ui/PriorityStatCard'
 import EmptyState from '@/components/ui/EmptyState'
-import { needsTodayAction, isOverdue, isRecurring, COLORS, toLegacyBucket } from '@/lib/designTokens'
+import { needsTodayAction, isOverdue, isRecurring, COLORS, toLegacyBucket, needsAfterPhoto } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
@@ -33,6 +33,15 @@ export default function DashboardPage() {
   const criticalItems = defects.filter(d => d.severity === 'critical' && d.status !== 'completed')
   const overdueItems = defects.filter(d => isOverdue(d))
   const recurringItems = defects.filter(d => isRecurring(d) && d.status !== 'completed')
+  const recheckItems = defects.filter(d => d.status === 'recheck_needed')
+  const noPhotoItems = defects.filter(d => needsAfterPhoto(d, state.files))
+  const unclassifiedItems = defects.filter(d => (d.defectType ?? '확인 필요') === '확인 필요')
+  const costUnresolvedItems = defects.filter(d => !d.costBearer || d.costBearer === '미정')
+
+  const sevRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+  const todayTop5 = [...todayItems]
+    .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9) || b.recurrenceCount - a.recurrenceCount)
+    .slice(0, 5)
 
   // ── AI 분석 인사이트 데이터 ──────────────────────────────────────────────
 
@@ -107,6 +116,50 @@ export default function DashboardPage() {
   const forecast3m = Math.round(avgMonthly * 3 + pendingPredCost * 0.5)
   const forecast6m = Math.round(avgMonthly * 6 + pendingPredCost * 0.8)
   const forecast12m = Math.round(avgMonthly * 12 + pendingPredCost * 1.2)
+
+  // 7. 위치별 하자 발생 Top10 (defectLocations 라벨 기준 집계)
+  const locationCounts: Record<string, { count: number; recurring: boolean }> = {}
+  state.defectLocations.filter(l => defects.some(d => d.id === l.defectId)).forEach(l => {
+    const key = l.label?.trim() || null
+    if (!key) return
+    const d = defects.find(x => x.id === l.defectId)
+    if (!locationCounts[key]) locationCounts[key] = { count: 0, recurring: false }
+    locationCounts[key].count++
+    if (d && isRecurring(d)) locationCounts[key].recurring = true
+  })
+  const topLocations = Object.entries(locationCounts).sort((a, b) => b[1].count - a[1].count).slice(0, 10)
+  const topLocationsMax = Math.max(1, ...topLocations.map(([, v]) => v.count))
+
+  // 8. 반복 발생 설비 Top5 (facilityName 기준)
+  const facilityCounts: Record<string, number> = {}
+  defects.forEach(d => {
+    if (!d.facilityName) return
+    facilityCounts[d.facilityName] = (facilityCounts[d.facilityName] ?? 0) + 1
+  })
+  const topFacilities = Object.entries(facilityCounts).filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  const topFacilitiesMax = Math.max(1, ...topFacilities.map(([, c]) => c))
+
+  // 9. 하자사항/일반사항 구분 현황
+  const DEFECT_TYPE_KEYS = ['하자사항', '일반사항', '확인 필요'] as const
+  const defectTypeCounts = DEFECT_TYPE_KEYS.map(t => ({
+    type: t,
+    count: defects.filter(d => (d.defectType ?? '확인 필요') === t).length,
+  }))
+
+  // 10. 비용 부담 주체별 현황
+  const COST_BEARER_KEYS = ['시공사', '재단', '외주업체', '사용자', '보험/기타', '미정'] as const
+  const costBearerCounts = COST_BEARER_KEYS.map(b => ({
+    bearer: b,
+    count: defects.filter(d => (d.costBearer || '미정') === b).length,
+    cost: defects.filter(d => (d.costBearer || '미정') === b).reduce((s, d) => s + (d.totalCost || 0), 0),
+  }))
+  const costBearerMax = Math.max(1, ...costBearerCounts.map(c => c.count))
+
+  // 11. 비용 증가 위험 항목 Top5 (재발 + 고비용)
+  const costRiskTop5 = [...defects]
+    .filter(d => d.recurrenceCount > 0)
+    .sort((a, b) => (b.totalCost * (b.recurrenceCount + 1)) - (a.totalCost * (a.recurrenceCount + 1)))
+    .slice(0, 5)
 
   const total = defects.length
   const open = defects.filter(d => toLegacyBucket(d.status) === 'open').length
@@ -281,6 +334,51 @@ export default function DashboardPage() {
         {todayItems.length === 0 && (
           <div style={{ marginBottom: 20 }}>
             <EmptyState icon="fa-solid fa-circle-check" message="오늘 처리할 긴급·지연 항목이 없습니다." actionLabel="하자 등록" actionHref="/defects/new" />
+          </div>
+        )}
+
+        {/* 관리 KPI (2단계/5단계 데이터 기반) */}
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+          <PriorityStatCard
+            label="재점검 필요" icon="fa-solid fa-magnifying-glass" count={recheckItems.length}
+            color={COLORS.warning} bg="#FFF7ED" href="/defects?filter=recheck"
+          />
+          <PriorityStatCard
+            label="조치후 사진 미첨부" icon="fa-solid fa-camera" count={noPhotoItems.length}
+            color={COLORS.warning} bg="#FFF7ED" href="/defects?filter=nophoto"
+          />
+          <PriorityStatCard
+            label="확인 필요(하자구분)" icon="fa-solid fa-circle-question" count={unclassifiedItems.length}
+            color={COLORS.textMuted} bg="#F9FAFB" href="/defects?filter=unclassified"
+          />
+          <PriorityStatCard
+            label="비용부담 미정" icon="fa-solid fa-won-sign" count={costUnresolvedItems.length}
+            color={COLORS.danger} bg="#FEF2F2" href="/defects?filter=costunresolved"
+          />
+        </div>
+
+        {/* 오늘 우선처리 Top5 */}
+        {todayTop5.length > 0 && (
+          <div style={{ ...card, marginBottom: 20 }}>
+            <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid #f0f4f8' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>오늘 우선처리 Top5</div>
+              <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>심각도·반복 순으로 정렬</div>
+            </div>
+            <div style={{ padding: '8px 0' }}>
+              {todayTop5.map((d, i) => (
+                <Link
+                  key={d.id}
+                  href={`/defects/${d.id}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 18px', textDecoration: 'none', borderBottom: i < todayTop5.length - 1 ? '1px solid #f7f8fa' : 'none' }}
+                >
+                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: COLORS.danger, color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
+                  <span style={{ fontFamily: "'SF Mono','Fira Code',monospace", fontSize: '0.7rem', color: '#635bff', flexShrink: 0 }}>{d.caseNumber}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#0a2540', fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
+                  {isOverdue(d) && <span style={{ fontSize: '0.62rem', fontWeight: 700, color: COLORS.warning, background: '#FFF7ED', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>지연</span>}
+                  {isRecurring(d) && <span style={{ fontSize: '0.62rem', fontWeight: 700, color: COLORS.danger, background: '#FEF2F2', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>반복{d.recurrenceCount}회</span>}
+                </Link>
+              ))}
+            </div>
           </div>
         )}
 
@@ -674,6 +772,159 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* Row D: 위치별 하자 발생 Top10 + 반복 발생 설비 Top5 */}
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginTop: 14 }}>
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>위치별 하자 발생 Top10</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>도면 위치 라벨 기준 집계 (4단계 위치 데이터)</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                {topLocations.length === 0 ? (
+                  <div style={{ color: '#aab', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0' }}>도면 위치 라벨이 등록된 하자가 없음</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {topLocations.map(([label, v], i) => {
+                      const pct = Math.round((v.count / topLocationsMax) * 100)
+                      return (
+                        <Link key={label} href={`/defects?search=${encodeURIComponent(label)}`} style={{ textDecoration: 'none', display: 'block' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: i < 3 ? '#635bff' : '#697386', minWidth: 14 }}>#{i + 1}</span>
+                              <span style={{ fontSize: '0.75rem', color: '#0a2540', fontWeight: i < 3 ? 600 : 400 }}>{label}</span>
+                              {v.recurring && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: COLORS.danger, background: '#FEF2F2', padding: '1px 5px', borderRadius: 4 }}>반복</span>}
+                            </div>
+                            <span style={{ fontSize: '0.7rem', color: '#425466', fontWeight: 600 }}>{v.count}건</span>
+                          </div>
+                          <div style={{ height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: i < 3 ? '#635bff' : '#a5b4fc', borderRadius: 999 }} />
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>반복 발생 설비 Top5</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>설비명 기준 집계 (2단계 설비명 필드)</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                {topFacilities.length === 0 ? (
+                  <div style={{ color: '#aab', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0' }}>설비명이 등록된 하자가 없음</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {topFacilities.map(([name, count], i) => {
+                      const pct = Math.round((count / topFacilitiesMax) * 100)
+                      return (
+                        <div key={name}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                            <span style={{ fontSize: '0.75rem', color: '#0a2540', fontWeight: i < 3 ? 600 : 400 }}>{name}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#425466', fontWeight: 600 }}>{count}건</span>
+                          </div>
+                          <div style={{ height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: i < 3 ? '#059669' : '#6ee7b7', borderRadius: 999 }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Row E: 하자사항/일반사항 구분 현황 + 비용 부담 주체별 현황 */}
+          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginTop: 14 }}>
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>하자사항/일반사항 구분 현황</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>관리자 확정 또는 기본값(확인 필요) 기준</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {defectTypeCounts.map(({ type, count }) => {
+                    const pct = Math.round((count / Math.max(1, total)) * 100)
+                    const color = type === '하자사항' ? COLORS.danger : type === '일반사항' ? COLORS.success : COLORS.textMuted
+                    return (
+                      <Link key={type} href={`/defects?filter=${type === '확인 필요' ? 'unclassified' : ''}`} style={{ textDecoration: 'none', display: 'block' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                          <span style={{ fontSize: '0.78rem', color: '#0a2540', fontWeight: 500 }}>{type}</span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#425466' }}>{count}건 <span style={{ fontSize: '0.68rem', color: '#697386' }}>{pct}%</span></span>
+                        </div>
+                        <div style={{ height: 6, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 999 }} />
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>비용 부담 주체별 현황</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>건수 및 누적 비용</div>
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {costBearerCounts.filter(c => c.count > 0).map(c => {
+                    const pct = Math.round((c.count / costBearerMax) * 100)
+                    const isUnresolved = c.bearer === '미정'
+                    return (
+                      <div key={c.bearer}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                          <span style={{ fontSize: '0.75rem', color: isUnresolved ? COLORS.danger : '#0a2540', fontWeight: isUnresolved ? 700 : 500 }}>{c.bearer}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: '0.65rem', color: '#697386' }}>{fmtKRW(c.cost)}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#425466', fontWeight: 600 }}>{c.count}건</span>
+                          </div>
+                        </div>
+                        <div style={{ height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: isUnresolved ? COLORS.danger : '#059669', borderRadius: 999 }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row F: 비용 증가 위험 항목 Top5 */}
+          <div style={{ marginTop: 14 }}>
+            <div style={aiCard}>
+              <div style={aiCardHeader}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>비용 증가 위험 항목 Top5</div>
+                <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>재발 횟수 × 누적 비용 기준</div>
+              </div>
+              <div style={{ padding: '8px 0' }}>
+                {costRiskTop5.length === 0 ? (
+                  <div style={{ color: '#aab', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0' }}>재발 이력이 있는 하자가 없음</div>
+                ) : (
+                  costRiskTop5.map((d, i) => (
+                    <Link
+                      key={d.id}
+                      href={`/defects/${d.id}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 18px', textDecoration: 'none', borderBottom: i < costRiskTop5.length - 1 ? '1px solid #f7f8fa' : 'none' }}
+                    >
+                      <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#635bff', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
+                      <span style={{ fontFamily: "'SF Mono','Fira Code',monospace", fontSize: '0.7rem', color: '#635bff', flexShrink: 0 }}>{d.caseNumber}</span>
+                      <span style={{ fontSize: '0.8rem', color: '#0a2540', fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: COLORS.danger, background: '#FEF2F2', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>재발{d.recurrenceCount}회</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0a2540', flexShrink: 0 }}>{fmtKRW(d.totalCost)}</span>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
         </div>
 
       </div>

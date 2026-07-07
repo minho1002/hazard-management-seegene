@@ -9,7 +9,7 @@ import type { SearchCondition } from '@/lib/searchParser'
 import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import EmptyState from '@/components/ui/EmptyState'
-import { isOverdue, isRecurring, needsTodayAction, COLORS, STATUS_FLOW, STATUS_META } from '@/lib/designTokens'
+import { isOverdue, isRecurring, needsTodayAction, needsAfterPhoto, COLORS, STATUS_FLOW, STATUS_META } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canDelete, CURRENT_ROLE } from '@/lib/permissions'
 
@@ -24,10 +24,11 @@ function DefectsPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const urlFilter = searchParams.get('filter')
+  const urlSearch = searchParams.get('search')
   const { state } = useStore()
   const isTablet = useMediaQuery('(max-width: 1024px)')
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(urlSearch || '')
   const [statusFilter, setStatusFilter] = useState('')
   const [severityFilter, setSeverityFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -50,7 +51,11 @@ function DefectsPageInner() {
       if (quickFilter === 'critical' && !(d.severity === 'critical' && d.status !== 'completed')) return false
       if (quickFilter === 'overdue' && !isOverdue(d)) return false
       if (quickFilter === 'recurring' && !(isRecurring(d) && d.status !== 'completed')) return false
-      if (search && !d.title.toLowerCase().includes(search.toLowerCase())) return false
+      if (quickFilter === 'recheck' && d.status !== 'recheck_needed') return false
+      if (quickFilter === 'nophoto' && !needsAfterPhoto(d, state.files)) return false
+      if (quickFilter === 'unclassified' && (d.defectType ?? '확인 필요') !== '확인 필요') return false
+      if (quickFilter === 'costunresolved' && !(!d.costBearer || d.costBearer === '미정')) return false
+      if (search && !(d.title.toLowerCase().includes(search.toLowerCase()) || (d.locationText ?? '').toLowerCase().includes(search.toLowerCase()))) return false
       if (statusFilter && d.status !== statusFilter) return false
       if (severityFilter && d.severity !== severityFilter) return false
       if (categoryFilter && d.categoryId !== parseInt(categoryFilter)) return false
@@ -189,6 +194,10 @@ function DefectsPageInner() {
             { key: 'critical', label: '긴급만', color: COLORS.critical },
             { key: 'overdue', label: '지연만', color: COLORS.warning },
             { key: 'recurring', label: '반복만', color: COLORS.action },
+            { key: 'recheck', label: '재점검 필요', color: COLORS.warning },
+            { key: 'nophoto', label: '조치후 사진 미첨부', color: COLORS.warning },
+            { key: 'unclassified', label: '확인 필요', color: COLORS.textMuted },
+            { key: 'costunresolved', label: '비용부담 미정', color: COLORS.danger },
           ] as const).map(f => (
             <button
               key={f.key}
