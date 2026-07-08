@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useState } from 'react'
-import { useCurrentRole, canRegister, canAccessAudit } from '@/lib/permissions'
-import RoleSwitcher from './RoleSwitcher'
+import { useCurrentRole, canRegister, canAccessAudit, canAccessAdminSettings } from '@/lib/permissions'
+import UserPanel from './UserPanel'
 
 const menuItems = [
   { href: '/dashboard', label: '대시보드', icon: 'fa-solid fa-table-cells-large' },
@@ -19,6 +19,13 @@ const analysisItems = [
   { href: '/reports/ai', label: 'AI 보고서',    icon: 'fa-solid fa-wand-magic-sparkles' },
   { href: '/ai',         label: 'AI 어시스턴트', icon: 'fa-solid fa-robot' },
   { href: '/audit',      label: '감사이력',     icon: 'fa-solid fa-clipboard-list' },
+]
+
+const adminItems = [
+  { href: '/admin/users',         label: '사용자 관리',   icon: 'fa-solid fa-users-gear' },
+  { href: '/admin/permissions',   label: '권한 관리',     icon: 'fa-solid fa-shield-halved' },
+  { href: '/admin/login-history', label: '로그인 이력',   icon: 'fa-solid fa-right-to-bracket' },
+  { href: '/admin/user-audit',    label: '계정 변경 이력', icon: 'fa-solid fa-clock-rotate-left' },
 ]
 
 function NavItem({ href, label, icon, active }: { href: string; label: string; icon: string; active: boolean }) {
@@ -95,7 +102,7 @@ export default function SideNav() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1" style={{ padding: 8 }}>
+      <nav className="flex-1" style={{ padding: 8, overflowY: 'auto' }}>
         <p
           className="font-bold uppercase px-2"
           style={{ fontSize: '0.6rem', letterSpacing: '0.09em', color: 'rgba(255,255,255,0.25)', paddingTop: 14, paddingBottom: 5 }}
@@ -115,11 +122,25 @@ export default function SideNav() {
         {analysisItems.filter(item => item.href !== '/audit' || canAccessAudit(role)).map(item => (
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))}
+
+        {canAccessAdminSettings(role) && (
+          <>
+            <p
+              className="font-bold uppercase px-2"
+              style={{ fontSize: '0.6rem', letterSpacing: '0.09em', color: 'rgba(255,255,255,0.25)', paddingTop: 14, paddingBottom: 5 }}
+            >
+              관리자 설정
+            </p>
+            {adminItems.map(item => (
+              <NavItem key={item.href} {...item} active={isActive(item.href)} />
+            ))}
+          </>
+        )}
       </nav>
 
-      {/* Role Switcher (8단계 — 로그인 없는 역할 전환기) */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12 }}>
-        <RoleSwitcher />
+      {/* 로그인 사용자 정보 */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 8 }}>
+        <UserPanel />
       </div>
 
       {/* Footer */}
