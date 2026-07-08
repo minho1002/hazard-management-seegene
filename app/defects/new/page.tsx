@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
@@ -38,6 +38,7 @@ export default function NewDefectPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
   const [locations, setLocations] = useState<{ id: number; x: number; y: number; label: string }[]>([])
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null)
   const nextTempId = useRef(1)
@@ -78,6 +79,11 @@ export default function NewDefectPage() {
   const [aiError, setAiError] = useState<string | null>(null)
   const [costPrediction, setCostPrediction] = useState<CostPrediction | null>(null)
   const [classificationSuggestion, setClassificationSuggestion] = useState<ClassificationSuggestion | null>(null)
+
+  const photoPreviews = useMemo(() => photoFiles.map(f => URL.createObjectURL(f)), [photoFiles])
+  useEffect(() => {
+    return () => { photoPreviews.forEach(url => URL.revokeObjectURL(url)) }
+  }, [photoPreviews])
 
   const floorPlans = state.floorPlans.filter(f => f.buildingId === form.buildingId)
 
@@ -403,13 +409,43 @@ export default function NewDefectPage() {
                   <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onPhotoFilesSelected} />
                 </label>
                 {photoFiles.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                  <div
+                    style={
+                      photoFiles.length === 1
+                        ? { marginTop: 12 }
+                        : { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8, marginTop: 12 }
+                    }
+                  >
                     {photoFiles.map((f, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f7fa', borderRadius: 6, padding: '4px 8px' }}>
-                        <span style={{ fontSize: '.7rem', color: '#425466' }}>{f.name}</span>
-                        <button type="button" onClick={() => removePhotoFile(idx)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b0bac6', fontSize: '.7rem' }}>
-                          <i className="fa-solid fa-xmark" />
-                        </button>
+                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div
+                          style={{
+                            position: 'relative', width: '100%', borderRadius: 8, overflow: 'hidden',
+                            border: '1px solid #e3e8ef', background: '#f5f7fa', cursor: 'pointer',
+                            ...(photoFiles.length === 1 ? { maxHeight: 280 } : { aspectRatio: '1 / 1' }),
+                          }}
+                          onClick={() => setPhotoPreviewUrl(photoPreviews[idx])}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={photoPreviews[idx]}
+                            alt={f.name}
+                            style={
+                              photoFiles.length === 1
+                                ? { width: '100%', maxHeight: 280, objectFit: 'contain', display: 'block', margin: '0 auto' }
+                                : { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
+                            }
+                          />
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); removePhotoFile(idx) }}
+                            title="삭제"
+                            style={{ position: 'absolute', top: 5, right: 5, width: 20, height: 20, borderRadius: '50%', background: 'rgba(10,37,64,.6)', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem' }}
+                          >
+                            <i className="fa-solid fa-xmark" />
+                          </button>
+                        </div>
+                        <div style={{ fontSize: '.65rem', color: '#b0bac6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
                       </div>
                     ))}
                   </div>
@@ -744,6 +780,16 @@ export default function NewDefectPage() {
           </div>
         </div>
       </div>
+
+      {photoPreviewUrl && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(10,37,64,.42)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' }}
+          onClick={() => setPhotoPreviewUrl(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photoPreviewUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 10, boxShadow: '0 8px 28px rgba(10,37,64,.3)' }} />
+        </div>
+      )}
     </div>
   )
 }
