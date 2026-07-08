@@ -12,6 +12,8 @@ import { compressImage } from '@/lib/imageCompress'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { suggestClassification, type ClassificationSuggestion } from '@/lib/defectClassificationService'
 import FloorLocationMarkers from '@/components/defects/FloorLocationMarkers'
+import { canRegister, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
+import AccessDenied from '@/components/ui/AccessDenied'
 
 const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
 const RESPONSIBILITY_OPTIONS = ['시공사 귀책', '재단/운영측 부담', '외주업체 부담', '사용자 과실', '소모품/노후', '원인 불명', '분쟁 가능']
@@ -85,6 +87,17 @@ export default function NewDefectPage() {
   useEffect(() => {
     return () => { photoPreviews.forEach(url => URL.revokeObjectURL(url)) }
   }, [photoPreviews])
+
+  const role = useCurrentRole()
+  const userName = useCurrentUserName()
+  useEffect(() => {
+    setForm(f => ({ ...f, managerName: userName }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (!canRegister(role)) {
+    return <AccessDenied message="조회자는 하자를 등록할 수 없습니다." />
+  }
 
   const floorPlans = state.floorPlans.filter(f => f.buildingId === form.buildingId)
 

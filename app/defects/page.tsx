@@ -11,7 +11,7 @@ import SeverityBadge from '@/components/ui/SeverityBadge'
 import EmptyState from '@/components/ui/EmptyState'
 import { isOverdue, isRecurring, needsTodayAction, needsAfterPhoto, COLORS, STATUS_FLOW, STATUS_META } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
-import { canDelete, CURRENT_ROLE } from '@/lib/permissions'
+import { canDelete, canRegister, useCurrentRole } from '@/lib/permissions'
 
 const COST_LABELS: Record<string, string> = { gukbo: '국보', our: '자체', claim: '청구' }
 
@@ -35,7 +35,9 @@ function DefectsPageInner() {
   const [nlQuery, setNlQuery] = useState('')
   const [quickFilter, setQuickFilter] = useState<string | null>(urlFilter)
   const [showDeleted, setShowDeleted] = useState(false)
-  const canSeeDeleted = canDelete(CURRENT_ROLE)
+  const role = useCurrentRole()
+  const canSeeDeleted = canDelete(role)
+  const canCreate = canRegister(role)
 
   const nlCondition: SearchCondition | null = nlQuery.trim() ? analyzeSearchQuery(nlQuery) : null
 
@@ -114,12 +116,14 @@ function DefectsPageInner() {
           <h1 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0a2540' }}>하자 목록</h1>
           <div style={{ fontSize: '0.72rem', color: '#697386', marginTop: 2 }}>전체 {filtered.length}건</div>
         </div>
-        <Link
-          href="/defects/new"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, background: '#635bff', color: '#fff', textDecoration: 'none' }}
-        >
-          <i className="fa-solid fa-plus" /> 하자 등록
-        </Link>
+        {canCreate && (
+          <Link
+            href="/defects/new"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, background: '#635bff', color: '#fff', textDecoration: 'none' }}
+          >
+            <i className="fa-solid fa-plus" /> 하자 등록
+          </Link>
+        )}
       </div>
 
       {/* Body */}
@@ -275,7 +279,7 @@ function DefectsPageInner() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={canSeeDeleted && showDeleted ? 9 : 8}>
-                    <EmptyState icon="fa-solid fa-inbox" message="등록된 하자가 없습니다." actionLabel="하자 등록" actionHref="/defects/new" />
+                    <EmptyState icon="fa-solid fa-inbox" message="등록된 하자가 없습니다." actionLabel={canCreate ? '하자 등록' : undefined} actionHref={canCreate ? '/defects/new' : undefined} />
                   </td>
                 </tr>
               ) : filtered.map(d => {

@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { STATUS_META, type StatusKey } from '@/lib/designTokens'
-import { canFinalize, CURRENT_ROLE } from '@/lib/permissions'
+import { canAccessAudit, useCurrentRole } from '@/lib/permissions'
+import AccessDenied from '@/components/ui/AccessDenied'
 
 interface AuditEntry {
   key: string
@@ -22,19 +23,15 @@ function statusLabel(s: string): string {
 
 function fmtDT(s: string) {
   const d = new Date(s)
-  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 export default function AuditPage() {
   const { state } = useStore()
+  const role = useCurrentRole()
 
-  if (!canFinalize(CURRENT_ROLE)) {
-    return (
-      <div style={{ padding: 52, textAlign: 'center', color: '#697386' }}>
-        <i className="fa-solid fa-lock" style={{ fontSize: '1.8rem', display: 'block', marginBottom: 10 }} />
-        <p>감사이력은 관리자만 접근할 수 있습니다.</p>
-      </div>
-    )
+  if (!canAccessAudit(role)) {
+    return <AccessDenied message="감사이력은 관리자만 접근할 수 있습니다." />
   }
 
   const entries: AuditEntry[] = [

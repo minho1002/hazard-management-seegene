@@ -11,7 +11,7 @@ import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
-import { canFinalize, canEditStatus, canDelete, CURRENT_ROLE } from '@/lib/permissions'
+import { canFinalize, canDelete, canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
 import { analyzeRecurrence } from '@/lib/recurringAnalysisService'
 
 const RECURRING_LEVEL_OPTIONS = ['반복 아님', '반복 의심', '반복 확정', '재점검 필요', '예방조치 진행중', '예방조치 완료'] as const
@@ -39,7 +39,7 @@ function fmtDate(s: string | null) {
 }
 function fmtDT(s: string) {
   const d = new Date(s)
-  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 function fmtKRW(n: number | null | undefined) {
   if (!n) return '0원'
@@ -53,6 +53,8 @@ export default function DefectDetailPage() {
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null)
+  const role = useCurrentRole()
+  const userName = useCurrentUserName()
 
   const [showLogModal, setShowLogModal] = useState(false)
   const [logForm, setLogForm] = useState({
@@ -256,7 +258,11 @@ export default function DefectDetailPage() {
   const ssStyle: React.CSSProperties = { border: '1.5px solid #e3e8ef', borderRadius: 7, padding: '6px 26px 6px 10px', fontSize: '0.8rem', fontFamily: 'inherit', color: '#0a2540', background: '#fff', cursor: 'pointer', outline: 'none', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M0 0l4.5 5L9 0z' fill='%23697386'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', fontWeight: 500 }
   const modalInputStyle: React.CSSProperties = { border: '1px solid #e3e8ef', borderRadius: 7, padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'inherit', color: '#0a2540', background: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box' }
   const classifySelectStyle: React.CSSProperties = { ...modalInputStyle, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M0 0l4.5 5L9 0z' fill='%23697386'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 28, cursor: 'pointer' }
-  const canConfirmClassification = canFinalize(CURRENT_ROLE)
+  const canEdit = canEditDefect(role, defect.managerName, userName)
+  const canFinalizeClassification = canFinalize(role)
+  const canEditClassification = canEdit
+  const reviewStatusOptions = canFinalizeClassification ? REVIEW_STATUS_OPTIONS : REVIEW_STATUS_OPTIONS.filter(o => o !== '확정')
+  const costApprovalOptions = canFinalizeClassification ? COST_APPROVAL_OPTIONS : COST_APPROVAL_OPTIONS.filter(o => o !== '승인완료' && o !== '반려')
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -270,23 +276,25 @@ export default function DefectDetailPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select
-            style={{ ...ssStyle, opacity: canEditStatus(CURRENT_ROLE) ? 1 : 0.5, cursor: canEditStatus(CURRENT_ROLE) ? 'pointer' : 'not-allowed' }}
+            style={{ ...ssStyle, opacity: canEdit ? 1 : 0.5, cursor: canEdit ? 'pointer' : 'not-allowed' }}
             value={defect.status}
-            disabled={!canEditStatus(CURRENT_ROLE)}
-            title={canEditStatus(CURRENT_ROLE) ? undefined : '조회자/일반등록자는 상태를 변경할 수 없습니다.'}
+            disabled={!canEdit}
+            title={canEdit ? undefined : '조회자이거나 담당 하자가 아니어서 상태를 변경할 수 없습니다.'}
             onChange={e => handleStatusSelect(e.target.value)}
           >
             {STATUS_FLOW.map(s => (
               <option key={s} value={s}>{STATUS_META[s].label}</option>
             ))}
           </select>
-          <button
-            onClick={() => router.push(`/defects/${defect.id}/edit`)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}
-          >
-            <i className="fa-solid fa-pen" /> 수정
-          </button>
-          {canDelete(CURRENT_ROLE) && (
+          {canEdit && (
+            <button
+              onClick={() => router.push(`/defects/${defect.id}/edit`)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}
+            >
+              <i className="fa-solid fa-pen" /> 수정
+            </button>
+          )}
+          {canDelete(role) && (
             <button
               onClick={handleDeleteDefect}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #fecdd3', background: '#fef0f4', color: '#be1044', fontFamily: 'inherit' }}
@@ -444,7 +452,7 @@ export default function DefectDetailPage() {
                     </div>
                   </div>
                 )}
-                {canConfirmClassification ? (
+                {canFinalizeClassification ? (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' as const }}>
                     <div style={{ flex: '1 1 140px' }}>
                       <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>반복 상태</label>
@@ -481,7 +489,7 @@ export default function DefectDetailPage() {
                     <strong style={{ color: '#635bff' }}><i className="fa-solid fa-wand-magic-sparkles" style={{ fontSize: 9, marginRight: 4 }} />AI 추천</strong> (신뢰도 {defect.aiClassification.confidence}): {defect.aiClassification.reasoning}
                   </div>
                 )}
-                {canConfirmClassification ? (
+                {canEditClassification ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>하자 구분</label>
@@ -508,7 +516,7 @@ export default function DefectDetailPage() {
                 <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386' }}>비용 처리 정보</span>
               </div>
               <div style={{ padding: 16 }}>
-                {canConfirmClassification ? (
+                {canEditClassification ? (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                       <div>
@@ -520,7 +528,7 @@ export default function DefectDetailPage() {
                       <div>
                         <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>비용 승인 상태</label>
                         <select style={classifySelectStyle} value={classifyForm.costApprovalStatus} onChange={e => setClassifyField('costApprovalStatus', e.target.value)}>
-                          {COST_APPROVAL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                          {costApprovalOptions.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>
                       <div>
@@ -532,7 +540,7 @@ export default function DefectDetailPage() {
                       <div>
                         <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>검토 상태</label>
                         <select style={classifySelectStyle} value={classifyForm.reviewStatus} onChange={e => setClassifyField('reviewStatus', e.target.value)}>
-                          {REVIEW_STATUS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                          {reviewStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>
                       <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -545,14 +553,14 @@ export default function DefectDetailPage() {
                       </div>
                       <div style={{ gridColumn: '1 / -1' }}>
                         <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>판단 근거</label>
-                        <textarea style={{ ...modalInputStyle, resize: 'vertical', lineHeight: 1.6 }} rows={2} placeholder="확정 사유를 입력하세요." value={classifyForm.classificationReason} onChange={e => setClassifyField('classificationReason', e.target.value)} />
+                        <textarea style={{ ...modalInputStyle, resize: 'vertical', lineHeight: 1.6 }} rows={2} placeholder={canFinalizeClassification ? '확정 사유를 입력하세요.' : '의견/제안 사유를 입력하세요.'} value={classifyForm.classificationReason} onChange={e => setClassifyField('classificationReason', e.target.value)} />
                       </div>
                     </div>
                     <button
                       onClick={submitClassification}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #635bff', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}
                     >
-                      <i className="fa-solid fa-check" /> 관리자 최종 확정
+                      <i className="fa-solid fa-check" /> {canFinalizeClassification ? '관리자 최종 확정' : '의견 제출'}
                     </button>
                   </>
                 ) : (
@@ -570,20 +578,22 @@ export default function DefectDetailPage() {
             <div style={{ ...card, marginTop: 16 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386' }}>도면 위치</span>
-                <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', color: '#635bff', fontWeight: 600, padding: '4px 10px', border: '1.5px solid #635bff', borderRadius: 6 }}>
-                  <i className="fa-solid fa-upload" /> 도면 교체
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFloorImageUpload} />
-                </label>
+                {canEdit && (
+                  <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', color: '#635bff', fontWeight: 600, padding: '4px 10px', border: '1.5px solid #635bff', borderRadius: 6 }}>
+                    <i className="fa-solid fa-upload" /> 도면 교체
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFloorImageUpload} />
+                  </label>
+                )}
               </div>
               <div
                 ref={mapContainerRef}
-                style={{ position: 'relative', background: '#f5f7fa', cursor: 'crosshair' }}
-                onClick={onMapClick}
+                style={{ position: 'relative', background: '#f5f7fa', cursor: canEdit ? 'crosshair' : 'default' }}
+                onClick={canEdit ? onMapClick : undefined}
               >
                 <div dangerouslySetInnerHTML={{ __html: floorSvg }} />
                 <FloorLocationMarkers
                   markers={locations}
-                  onMove={(locId, x, y) => updateDefectLocationPosition(locId, x, y)}
+                  onMove={canEdit ? (locId, x, y) => updateDefectLocationPosition(locId, x, y) : () => {}}
                   onSelect={setSelectedLocationId}
                   selectedId={selectedLocationId}
                   containerRef={mapContainerRef}
@@ -591,7 +601,7 @@ export default function DefectDetailPage() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', borderTop: '1px solid #f0f4f8' }}>
                 <span style={{ fontSize: '0.72rem', color: '#697386' }}>총 {locations.length}개 위치가 등록되었습니다</span>
-                {locations.length > 0 && (
+                {canEdit && locations.length > 0 && (
                   <button type="button" onClick={clearAllLocations} style={{ fontSize: '0.7rem', color: '#697386', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
                     위치 초기화
                   </button>
@@ -610,12 +620,15 @@ export default function DefectDetailPage() {
                         style={{ ...modalInputStyle, border: 'none', padding: '2px 4px', flex: 1 }}
                         placeholder={`위치 ${i + 1} 라벨`}
                         value={loc.label ?? ''}
+                        readOnly={!canEdit}
                         onClick={e => e.stopPropagation()}
                         onChange={e => updateDefectLocation(loc.id, { label: e.target.value })}
                       />
-                      <button type="button" onClick={e => { e.stopPropagation(); removeLocation(loc.id) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b0bac6', fontSize: '.75rem' }}>
-                        <i className="fa-solid fa-xmark" />
-                      </button>
+                      {canEdit && (
+                        <button type="button" onClick={e => { e.stopPropagation(); removeLocation(loc.id) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b0bac6', fontSize: '.75rem' }}>
+                          <i className="fa-solid fa-xmark" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -626,7 +639,7 @@ export default function DefectDetailPage() {
             <div style={{ fontSize: '0.7rem', color: '#b0bac6', marginTop: 16, marginBottom: -8 }}>
               증빙자료(견적서/작업확인서 등)는 아래 사진/첨부파일 영역에서 관리합니다.
             </div>
-            <DefectPhotos defectId={defect.id} uploadedBy={defect.managerName ?? null} />
+            <DefectPhotos defectId={defect.id} uploadedBy={defect.managerName ?? null} canEdit={canEdit} />
           </div>
 
           {/* Right: Timeline + 상태 변경 이력 */}
@@ -634,12 +647,14 @@ export default function DefectDetailPage() {
           <div style={{ ...card, height: 'fit-content' }}>
             <div style={{ padding: '14px 18px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>처리 이력</h3>
-              <button
-                onClick={() => setShowLogModal(true)}
-                style={{ background: 'none', border: 'none', color: '#635bff', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}
-              >
-                <i className="fa-solid fa-plus" /> 이력 추가
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => setShowLogModal(true)}
+                  style={{ background: 'none', border: 'none', color: '#635bff', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  <i className="fa-solid fa-plus" /> 이력 추가
+                </button>
+              )}
             </div>
             <div style={{ padding: '4px 18px 18px' }}>
               {logs.length === 0 ? (

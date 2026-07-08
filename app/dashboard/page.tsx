@@ -14,6 +14,7 @@ import PriorityStatCard from '@/components/ui/PriorityStatCard'
 import EmptyState from '@/components/ui/EmptyState'
 import { needsTodayAction, isOverdue, isRecurring, COLORS, toLegacyBucket, needsAfterPhoto } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
+import { canRegister, useCurrentRole } from '@/lib/permissions'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
@@ -26,6 +27,7 @@ export default function DashboardPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [updatedAt, setUpdatedAt] = useState('')
+  const role = useCurrentRole()
 
   useEffect(() => {
     setUpdatedAt(new Date().toLocaleString('ko-KR'))
@@ -281,12 +283,14 @@ export default function DashboardPage() {
           >
             <i className="fa-solid fa-rotate" /> 초기화
           </button>
-          <Link
-            href="/defects/new"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, background: '#635bff', color: '#fff', textDecoration: 'none' }}
-          >
-            <i className="fa-solid fa-plus" /> 하자 등록
-          </Link>
+          {canRegister(role) && (
+            <Link
+              href="/defects/new"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, background: '#635bff', color: '#fff', textDecoration: 'none' }}
+            >
+              <i className="fa-solid fa-plus" /> 하자 등록
+            </Link>
+          )}
         </div>
       </div>
 
@@ -337,7 +341,7 @@ export default function DashboardPage() {
 
         {todayItems.length === 0 && (
           <div style={{ marginBottom: 20 }}>
-            <EmptyState icon="fa-solid fa-circle-check" message="오늘 처리할 긴급·지연 항목이 없습니다." actionLabel="하자 등록" actionHref="/defects/new" />
+            <EmptyState icon="fa-solid fa-circle-check" message="오늘 처리할 긴급·지연 항목이 없습니다." actionLabel={canRegister(role) ? '하자 등록' : undefined} actionHref={canRegister(role) ? '/defects/new' : undefined} />
           </div>
         )}
 

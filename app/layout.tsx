@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import SideNav from '@/components/layout/SideNav'
+import RoleBanner from '@/components/layout/RoleBanner'
 
 export const metadata: Metadata = {
   title: '하자관리 — 대전충청검사센터',
@@ -67,6 +68,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", background: '#F5F6F8', color: '#0a2540', fontSize: 14, lineHeight: 1.5 }}>
         <SideNav />
         <main style={{ flex: 1, minWidth: 0, overflowX: 'hidden' }}>
+          <RoleBanner />
           {children}
         </main>
       </body>

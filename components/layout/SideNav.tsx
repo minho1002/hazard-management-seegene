@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useState } from 'react'
-import { CURRENT_ROLE, canRegister } from '@/lib/permissions'
+import { useCurrentRole, canRegister, canAccessAudit } from '@/lib/permissions'
 import RoleSwitcher from './RoleSwitcher'
 
 const menuItems = [
@@ -44,6 +44,7 @@ export default function SideNav() {
   const path = usePathname()
   const isMobile = useMediaQuery('(max-width: 900px)')
   const [open, setOpen] = useState(false)
+  const role = useCurrentRole()
 
   const isActive = (href: string) => {
     if (href === '/defects')
@@ -101,7 +102,7 @@ export default function SideNav() {
         >
           메뉴
         </p>
-        {menuItems.filter(item => item.href !== '/defects/new' || canRegister(CURRENT_ROLE)).map(item => (
+        {menuItems.filter(item => item.href !== '/defects/new' || canRegister(role)).map(item => (
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))}
 
@@ -111,7 +112,7 @@ export default function SideNav() {
         >
           분석
         </p>
-        {analysisItems.map(item => (
+        {analysisItems.filter(item => item.href !== '/audit' || canAccessAudit(role)).map(item => (
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))}
       </nav>

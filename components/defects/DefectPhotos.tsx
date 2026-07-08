@@ -7,6 +7,7 @@ import { compressImage } from '@/lib/imageCompress'
 interface Props {
   defectId: number
   uploadedBy: string | null
+  canEdit: boolean
 }
 
 const PHOTO_TYPE_LABELS: Record<PhotoType, string> = {
@@ -54,10 +55,10 @@ function getExt(fileName: string): string {
 
 function fmtDT(s: string) {
   const d = new Date(s)
-  return d.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
-export default function DefectPhotos({ defectId, uploadedBy }: Props) {
+export default function DefectPhotos({ defectId, uploadedBy, canEdit }: Props) {
   const { state, addFile, deleteFile } = useStore()
   const [uploading, setUploading] = useState<PhotoType | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -142,24 +143,26 @@ export default function DefectPhotos({ defectId, uploadedBy }: Props) {
                   <i className={`fa-solid ${icon}`} style={{ fontSize: '.7rem', color: '#697386' }} />
                   {PHOTO_TYPE_LABELS[type]} <span style={{ color: '#b0bac6', fontWeight: 400 }}>({sectionFiles.length})</span>
                 </span>
-                <label style={{
-                  cursor: isUploading ? 'not-allowed' : 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  fontSize: '.68rem', color: '#635bff', fontWeight: 600,
-                  padding: '4px 9px', border: '1.5px solid #635bff', borderRadius: 6,
-                  opacity: isUploading ? 0.6 : 1,
-                }}>
-                  <i className={`fa-solid ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`} style={{ fontSize: '.6rem' }} />
-                  {isUploading ? '업로드 중...' : '업로드'}
-                  <input
-                    type="file"
-                    accept={ALLOWED_EXT[type].map(ext => `.${ext}`).join(',')}
-                    multiple
-                    style={{ display: 'none' }}
-                    disabled={isUploading}
-                    onChange={e => upload(e, type)}
-                  />
-                </label>
+                {canEdit && (
+                  <label style={{
+                    cursor: isUploading ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontSize: '.68rem', color: '#635bff', fontWeight: 600,
+                    padding: '4px 9px', border: '1.5px solid #635bff', borderRadius: 6,
+                    opacity: isUploading ? 0.6 : 1,
+                  }}>
+                    <i className={`fa-solid ${isUploading ? 'fa-spinner fa-spin' : 'fa-upload'}`} style={{ fontSize: '.6rem' }} />
+                    {isUploading ? '업로드 중...' : '업로드'}
+                    <input
+                      type="file"
+                      accept={ALLOWED_EXT[type].map(ext => `.${ext}`).join(',')}
+                      multiple
+                      style={{ display: 'none' }}
+                      disabled={isUploading}
+                      onChange={e => upload(e, type)}
+                    />
+                  </label>
+                )}
               </div>
 
               {sectionFiles.length === 0 ? (
@@ -191,14 +194,16 @@ export default function DefectPhotos({ defectId, uploadedBy }: Props) {
                             >
                               <i className="fa-solid fa-download" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={e => { e.stopPropagation(); remove(f) }}
-                              title="삭제"
-                              style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(10,37,64,.6)', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem' }}
-                            >
-                              <i className="fa-solid fa-xmark" />
-                            </button>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={e => { e.stopPropagation(); remove(f) }}
+                                title="삭제"
+                                style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(10,37,64,.6)', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem' }}
+                              >
+                                <i className="fa-solid fa-xmark" />
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div style={{ fontSize: '.6rem', color: '#b0bac6', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

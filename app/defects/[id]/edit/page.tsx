@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import { useMediaQuery } from '@/lib/useMediaQuery'
+import { canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
+import AccessDenied from '@/components/ui/AccessDenied'
 
 export default function EditDefectPage() {
   const { id } = useParams<{ id: string }>()
@@ -14,6 +16,8 @@ export default function EditDefectPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [customCategoryName, setCustomCategoryName] = useState('')
+  const role = useCurrentRole()
+  const userName = useCurrentUserName()
 
   const defectRaw = state.defects.find(d => d.id === parseInt(id))
 
@@ -44,6 +48,10 @@ export default function EditDefectPage() {
     )
   }
   const defect = defectRaw
+
+  if (!canEditDefect(role, defect.managerName, userName)) {
+    return <AccessDenied message="본인 또는 담당 하자만 수정할 수 있습니다." />
+  }
 
   const floorPlans = state.floorPlans.filter(f => f.buildingId === form.buildingId)
 
