@@ -139,7 +139,8 @@ export default function NewDefectPage() {
   function onPhotoFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files
     if (!selected) return
-    setPhotoFiles(prev => [...prev, ...Array.from(selected)])
+    const newFiles = Array.from(selected)
+    setPhotoFiles(prev => [...prev, ...newFiles])
     e.target.value = ''
   }
 
