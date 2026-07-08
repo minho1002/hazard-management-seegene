@@ -1,6 +1,7 @@
 'use client'
 
 import { canAccessAdminSettings, useCurrentRole } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import { useUserStore } from '@/lib/auth/userStore'
 import type { UserAuditAction } from '@/lib/auth/types'
 import AccessDenied from '@/components/ui/AccessDenied'
@@ -14,10 +15,12 @@ function fmtDT(s: string) {
 const ACTION_LABELS: Record<UserAuditAction, string> = {
   CREATE: '계정 생성', UPDATE: '정보 수정', ROLE_CHANGE: '역할 변경', PASSWORD_RESET: '비밀번호 초기화',
   DISABLE: '비활성화', ENABLE: '활성화', DELETE: '삭제', LOGIN_SUCCESS: '로그인 성공', LOGIN_FAIL: '로그인 실패',
+  PERMISSION_CHANGE: '권한 변경',
 }
 const ACTION_COLORS: Record<UserAuditAction, string> = {
   CREATE: '#2563EB', UPDATE: '#425466', ROLE_CHANGE: '#7C3AED', PASSWORD_RESET: '#B06B1A',
   DISABLE: '#B45309', ENABLE: '#0F7850', DELETE: '#DC2626', LOGIN_SUCCESS: '#0F7850', LOGIN_FAIL: '#DC2626',
+  PERMISSION_CHANGE: '#7C3AED',
 }
 
 function fmtValue(v: Record<string, unknown> | null): string {
@@ -29,6 +32,7 @@ const card: React.CSSProperties = { background: '#fff', border: '1px solid #e3e8
 
 export default function UserAuditPage() {
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
   const { auditLogs, ready } = useUserStore()
 
   if (!canAccessAdminSettings(role)) {

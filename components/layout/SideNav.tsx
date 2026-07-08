@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useState } from 'react'
 import { useCurrentRole, canRegister, canAccessAudit, canAccessAdminSettings } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import UserPanel from './UserPanel'
 
 const menuItems = [
@@ -52,6 +53,7 @@ export default function SideNav() {
   const isMobile = useMediaQuery('(max-width: 900px)')
   const [open, setOpen] = useState(false)
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스가 마운트 후 갱신될 때 메뉴를 다시 계산하기 위한 구독
 
   const isActive = (href: string) => {
     if (href === '/defects')

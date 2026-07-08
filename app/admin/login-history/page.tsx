@@ -1,6 +1,7 @@
 'use client'
 
 import { canAccessAdminSettings, useCurrentRole } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import { useUserStore } from '@/lib/auth/userStore'
 import AccessDenied from '@/components/ui/AccessDenied'
 import EmptyState from '@/components/ui/EmptyState'
@@ -14,6 +15,7 @@ const card: React.CSSProperties = { background: '#fff', border: '1px solid #e3e8
 
 export default function LoginHistoryPage() {
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
   const { loginHistory, ready } = useUserStore()
 
   if (!canAccessAdminSettings(role)) {

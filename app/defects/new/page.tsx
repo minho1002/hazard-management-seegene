@@ -13,6 +13,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery'
 import { suggestClassification, type ClassificationSuggestion } from '@/lib/defectClassificationService'
 import FloorLocationMarkers from '@/components/defects/FloorLocationMarkers'
 import { canRegister, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import AccessDenied from '@/components/ui/AccessDenied'
 
 const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
@@ -89,6 +90,7 @@ export default function NewDefectPage() {
   }, [photoPreviews])
 
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
   const userName = useCurrentUserName()
   useEffect(() => {
     setForm(f => ({ ...f, managerName: userName }))

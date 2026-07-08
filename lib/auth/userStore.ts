@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Role } from '@/lib/permissions'
+import { canManageUsers, type Role } from '@/lib/permissions'
 import type { User, AccountStatus, UserAuditLog, LoginHistoryEntry } from './types'
+import { getCurrentRole } from './session'
 import {
   loadUsers, persistUsers, ensureSeeded, hashPassword,
   appendUserAuditLog, loadUserAuditLogs, loadLoginHistory,
   generateTempPassword, nextUserId,
 } from './userStorage'
+
+const NO_PERMISSION_ERROR = '사용자 계정을 관리할 권한이 없습니다.'
 
 export interface NewUserInput {
   username: string
@@ -44,6 +47,7 @@ export function useUserStore() {
   }, [refresh])
 
   const createUser = useCallback(async (input: NewUserInput, createdBy: string): Promise<Result> => {
+    if (!canManageUsers(getCurrentRole())) return { ok: false, error: NO_PERMISSION_ERROR }
     const current = loadUsers()
     if (current.some(u => u.username.toLowerCase() === input.username.toLowerCase() && u.status !== '삭제됨')) {
       return { ok: false, error: '이미 사용 중인 아이디입니다.' }
@@ -77,6 +81,7 @@ export function useUserStore() {
   }, [refresh])
 
   const updateUser = useCallback((id: string, patch: UserUpdateInput, changedBy: string, reason?: string): Result => {
+    if (!canManageUsers(getCurrentRole())) return { ok: false, error: NO_PERMISSION_ERROR }
     const current = loadUsers()
     const target = current.find(u => u.id === id)
     if (!target) return { ok: false, error: '사용자를 찾을 수 없습니다.' }
@@ -113,6 +118,7 @@ export function useUserStore() {
   }, [refresh])
 
   const deleteUser = useCallback((id: string, changedBy: string, currentSessionUserId: string, reason: string): Result => {
+    if (!canManageUsers(getCurrentRole())) return { ok: false, error: NO_PERMISSION_ERROR }
     const current = loadUsers()
     const target = current.find(u => u.id === id)
     if (!target) return { ok: false, error: '사용자를 찾을 수 없습니다.' }
@@ -128,6 +134,7 @@ export function useUserStore() {
   }, [refresh])
 
   const resetPassword = useCallback(async (id: string, changedBy: string): Promise<Result & { tempPassword?: string }> => {
+    if (!canManageUsers(getCurrentRole())) return { ok: false, error: NO_PERMISSION_ERROR }
     const current = loadUsers()
     const target = current.find(u => u.id === id)
     if (!target) return { ok: false, error: '사용자를 찾을 수 없습니다.' }

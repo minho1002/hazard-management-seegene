@@ -11,7 +11,8 @@ import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
 import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
-import { canFinalize, canDelete, canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
+import { canFinalizeClassification as canFinalizeClassificationFn, canConfirmRecurring, canDelete, canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import { analyzeRecurrence } from '@/lib/recurringAnalysisService'
 
 const RECURRING_LEVEL_OPTIONS = ['반복 아님', '반복 의심', '반복 확정', '재점검 필요', '예방조치 진행중', '예방조치 완료'] as const
@@ -54,6 +55,7 @@ export default function DefectDetailPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null)
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
   const userName = useCurrentUserName()
 
   const [showLogModal, setShowLogModal] = useState(false)
@@ -259,7 +261,8 @@ export default function DefectDetailPage() {
   const modalInputStyle: React.CSSProperties = { border: '1px solid #e3e8ef', borderRadius: 7, padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'inherit', color: '#0a2540', background: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box' }
   const classifySelectStyle: React.CSSProperties = { ...modalInputStyle, appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M0 0l4.5 5L9 0z' fill='%23697386'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 28, cursor: 'pointer' }
   const canEdit = canEditDefect(role, defect.managerName, userName)
-  const canFinalizeClassification = canFinalize(role)
+  const canFinalizeClassification = canFinalizeClassificationFn(role)
+  const canConfirmRecurringLocal = canConfirmRecurring(role)
   const canEditClassification = canEdit
   const reviewStatusOptions = canFinalizeClassification ? REVIEW_STATUS_OPTIONS : REVIEW_STATUS_OPTIONS.filter(o => o !== '확정')
   const costApprovalOptions = canFinalizeClassification ? COST_APPROVAL_OPTIONS : COST_APPROVAL_OPTIONS.filter(o => o !== '승인완료' && o !== '반려')
@@ -452,7 +455,7 @@ export default function DefectDetailPage() {
                     </div>
                   </div>
                 )}
-                {canFinalizeClassification ? (
+                {canConfirmRecurringLocal ? (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' as const }}>
                     <div style={{ flex: '1 1 140px' }}>
                       <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>반복 상태</label>
@@ -472,7 +475,7 @@ export default function DefectDetailPage() {
                     </button>
                   </div>
                 ) : (
-                  <div style={{ fontSize: '0.78rem', color: '#697386' }}>반복 확정/해제는 관리자만 가능합니다.</div>
+                  <div style={{ fontSize: '0.78rem', color: '#697386' }}>반복 확정/해제 권한이 없습니다.</div>
                 )}
               </div>
             </div>

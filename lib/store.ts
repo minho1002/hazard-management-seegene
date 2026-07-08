@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { getStatusTransitionError, type StatusKey } from '@/lib/designTokens'
-import { canFinalize, canDelete } from '@/lib/permissions'
+import { canConfirmRecurring, canFinalizeClassification, canDelete } from '@/lib/permissions'
 import { getCurrentRole } from '@/lib/auth/session'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -535,8 +535,8 @@ export function useStore() {
     if (!defect) return { ok: false, error: '하자를 찾을 수 없습니다.' }
 
     const wantsFinalize = patch.reviewStatus === '확정' || patch.costApprovalStatus === '승인완료'
-    if (wantsFinalize && !canFinalize(getCurrentRole())) {
-      return { ok: false, error: '하자구분/귀책판단 확정은 관리자만 처리할 수 있습니다.' }
+    if (wantsFinalize && !canFinalizeClassification(getCurrentRole())) {
+      return { ok: false, error: '하자구분/귀책판단 확정 권한이 없습니다.' }
     }
 
     const merged = { ...defect, ...patch }
@@ -652,8 +652,8 @@ export function useStore() {
     if (!defect) return { ok: false, error: '하자를 찾을 수 없습니다.' }
 
     const isConfirmOrRelease = level === '반복 확정' || (defect.recurringLevel === '반복 확정' && level === '반복 아님')
-    if (isConfirmOrRelease && !canFinalize(getCurrentRole())) {
-      return { ok: false, error: '반복 하자 확정/해제는 관리자만 처리할 수 있습니다.' }
+    if (isConfirmOrRelease && !canConfirmRecurring(getCurrentRole())) {
+      return { ok: false, error: '반복 하자 확정/해제 권한이 없습니다.' }
     }
     if (isConfirmOrRelease && !opts.reason?.trim()) {
       return { ok: false, error: '반복 확정/해제는 사유 입력이 필수입니다.' }

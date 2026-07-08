@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from '@/lib/auth/session'
+import { hydratePermissionMatrix } from '@/lib/auth/permissionMatrix'
 
 // 미로그인 사용자가 보호된 페이지에 직접 URL로 접근하는 것을 막는다.
 //
@@ -18,7 +19,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
 
-  useEffect(() => { setMounted(true) }, [])
+  useEffect(() => { hydratePermissionMatrix(); setMounted(true) }, [])
 
   useEffect(() => {
     if (mounted && !session) router.replace('/login')

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { STATUS_META, type StatusKey } from '@/lib/designTokens'
 import { canAccessAudit, useCurrentRole } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import AccessDenied from '@/components/ui/AccessDenied'
 
 interface AuditEntry {
@@ -29,6 +30,7 @@ function fmtDT(s: string) {
 export default function AuditPage() {
   const { state } = useStore()
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
 
   if (!canAccessAudit(role)) {
     return <AccessDenied message="감사이력은 관리자만 접근할 수 있습니다." />

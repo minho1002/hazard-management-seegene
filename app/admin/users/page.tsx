@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { canAccessAdminSettings, useCurrentRole, type Role } from '@/lib/permissions'
+import { canAccessAdminSettings, canManageUsers, useCurrentRole, type Role } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import { useSession } from '@/lib/auth/session'
 import { useUserStore, type NewUserInput } from '@/lib/auth/userStore'
 import type { User, AccountStatus } from '@/lib/auth/types'
@@ -36,6 +37,7 @@ const modalBox: React.CSSProperties = { background: '#fff', borderRadius: 14, pa
 
 export default function UserManagementPage() {
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
   const session = useSession()
   const { users, ready, createUser, updateUser, deleteUser, resetPassword } = useUserStore()
 
@@ -52,6 +54,8 @@ export default function UserManagementPage() {
   if (!canAccessAdminSettings(role)) {
     return <AccessDenied message="사용자 관리는 관리자만 접근할 수 있습니다." />
   }
+
+  const canManage = canManageUsers(role)
 
   const changedBy = session?.username ?? 'system'
   const visibleUsers = users.filter(u => showDeleted ? true : u.status !== '삭제됨')
@@ -109,12 +113,14 @@ export default function UserManagementPage() {
           <h1 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0a2540' }}>사용자 관리</h1>
           <div style={{ fontSize: '0.72rem', color: '#697386', marginTop: 2 }}>전체 {visibleUsers.length}명</div>
         </div>
-        <button
-          onClick={() => { setShowRegister(true); setFormError(null) }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: 'none', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}
-        >
-          <i className="fa-solid fa-user-plus" /> 사용자 등록
-        </button>
+        {canManage && (
+          <button
+            onClick={() => { setShowRegister(true); setFormError(null) }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: 'none', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}
+          >
+            <i className="fa-solid fa-user-plus" /> 사용자 등록
+          </button>
+        )}
       </div>
 
       <div style={{ padding: '24px 32px' }}>
@@ -156,6 +162,8 @@ export default function UserManagementPage() {
                     <td style={{ padding: '11px 16px' }}>
                       {u.status === '삭제됨' ? (
                         <span style={{ fontSize: '0.72rem', color: '#b0bac6' }}>-</span>
+                      ) : !canManage ? (
+                        <span style={{ fontSize: '0.72rem', color: '#b0bac6' }}>조회만 가능</span>
                       ) : (
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
                           <button onClick={() => openEdit(u)} style={{ fontSize: '0.7rem', padding: '4px 8px', borderRadius: 6, border: '1px solid #e3e8ef', background: '#fff', color: '#425466', cursor: 'pointer' }}>수정</button>

@@ -12,6 +12,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { isOverdue, isRecurring, needsTodayAction, needsAfterPhoto, COLORS, STATUS_FLOW, STATUS_META } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canDelete, canRegister, useCurrentRole } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 
 const COST_LABELS: Record<string, string> = { gukbo: '국보', our: '자체', claim: '청구' }
 
@@ -36,6 +37,7 @@ function DefectsPageInner() {
   const [quickFilter, setQuickFilter] = useState<string | null>(urlFilter)
   const [showDeleted, setShowDeleted] = useState(false)
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
   const canSeeDeleted = canDelete(role)
   const canCreate = canRegister(role)
 

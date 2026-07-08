@@ -1,3 +1,5 @@
+import { can } from './auth/permissionMatrix'
+
 export type Role = '조회자' | '실무자' | '관리자'
 
 // 실제 로그인 세션(누가 로그인했는지)은 lib/auth/session.ts가 소유한다.
@@ -18,49 +20,57 @@ export function isViewer(role: Role): boolean {
   return role === '조회자'
 }
 
+// 아래 canXxx 함수들은 모두 lib/auth/permissionMatrix.ts의 편집 가능한 매트릭스를
+// 조회한다. 실제 값은 관리자 설정 > 권한 관리 화면에서 역할별로 바꿀 수 있다.
+
 // 하자 등록 화면 접근 및 등록 실행
 export function canRegister(role: Role): boolean {
-  return role !== '조회자'
+  return can(role, 'register')
 }
 
-// 진행상태 변경(조치완료 요청 등). 최종완료 전환 자체는 canFinalize에서 별도 검증.
-export function canEditStatus(role: Role): boolean {
-  return role !== '조회자'
-}
-
-// 삭제, 최종완료 승인, 비용 승인, 반복하자 확정/해제 등 최종 판단은 관리자만.
-export function canFinalize(role: Role): boolean {
-  return role === '관리자'
-}
-
+// 삭제(Soft Delete)
 export function canDelete(role: Role): boolean {
-  return role === '관리자'
+  return can(role, 'delete')
+}
+
+// 최종완료 승인
+export function canApproveCompletion(role: Role): boolean {
+  return can(role, 'approveCompletion')
+}
+
+// 반복 하자 확정/해제
+export function canConfirmRecurring(role: Role): boolean {
+  return can(role, 'confirmRecurring')
+}
+
+// 하자구분/귀책/비용부담/비용승인 최종 확정
+export function canFinalizeClassification(role: Role): boolean {
+  return can(role, 'finalizeClassification')
+}
+
+// 보고서 최종 승인 (현재 승인 화면 없음 — 추후 확장용)
+export function canApproveReport(role: Role): boolean {
+  return can(role, 'approveReport')
 }
 
 export function canAccessAudit(role: Role): boolean {
-  return role === '관리자'
+  return can(role, 'viewAudit')
 }
 
 // 관리자 설정 메뉴(사용자관리/권한관리/로그인이력/계정변경이력) 전체 접근 게이트.
 export function canAccessAdminSettings(role: Role): boolean {
-  return role === '관리자'
+  return can(role, 'adminSettings')
 }
 
+// 사용자 계정 생성/수정/삭제/비밀번호초기화 실행 (adminSettings와 별개로,
+// 관리자 설정 화면에는 들어오되 계정 변경은 못 하게 하는 것도 가능하도록 분리)
 export function canManageUsers(role: Role): boolean {
-  return role === '관리자'
-}
-
-export function canManageReferenceData(role: Role): boolean {
-  return role === '관리자'
-}
-
-export function canApproveReport(role: Role): boolean {
-  return role === '관리자'
+  return can(role, 'manageUsers')
 }
 
 // 실무자는 담당자 미지정 건이거나 본인이 담당인 건만 등록/수정/조치 가능. 관리자는 전체.
 export function canEditDefect(role: Role, managerName: string | null | undefined, currentUserName: string): boolean {
-  if (role === '조회자') return false
+  if (!can(role, 'editOwn')) return false
   if (role === '관리자') return true
   return !managerName || managerName === currentUserName
 }

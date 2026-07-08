@@ -23,6 +23,7 @@ export interface User {
 export type UserAuditAction =
   | 'CREATE' | 'UPDATE' | 'ROLE_CHANGE' | 'PASSWORD_RESET'
   | 'DISABLE' | 'ENABLE' | 'DELETE' | 'LOGIN_SUCCESS' | 'LOGIN_FAIL'
+  | 'PERMISSION_CHANGE'
 
 export interface UserAuditLog {
   id: string

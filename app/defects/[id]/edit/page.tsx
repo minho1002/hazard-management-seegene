@@ -7,6 +7,7 @@ import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import AccessDenied from '@/components/ui/AccessDenied'
 
 export default function EditDefectPage() {
@@ -17,6 +18,7 @@ export default function EditDefectPage() {
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [customCategoryName, setCustomCategoryName] = useState('')
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
   const userName = useCurrentUserName()
 
   const defectRaw = state.defects.find(d => d.id === parseInt(id))

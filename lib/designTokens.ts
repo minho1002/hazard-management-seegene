@@ -1,5 +1,5 @@
 import type { Defect, DefectFile } from '@/lib/store'
-import { canFinalize, type Role } from '@/lib/permissions'
+import { canApproveCompletion, type Role } from '@/lib/permissions'
 
 export const COLORS = {
   bg: '#F5F6F8',
@@ -99,7 +99,7 @@ export function getStatusTransitionError(
   if (target === defect.status) return null
 
   if (target === 'completed') {
-    if (!canFinalize(ctx.role)) return '최종완료는 관리자만 처리할 수 있습니다.'
+    if (!canApproveCompletion(ctx.role)) return '최종완료 승인 권한이 없습니다.'
     if (!defect.costBearer || defect.costBearer === '미정') {
       return '비용 부담 주체를 확정해야 최종완료할 수 있습니다.'
     }

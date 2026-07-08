@@ -15,6 +15,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { needsTodayAction, isOverdue, isRecurring, COLORS, toLegacyBucket, needsAfterPhoto } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canRegister, useCurrentRole } from '@/lib/permissions'
+import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
@@ -28,6 +29,7 @@ export default function DashboardPage() {
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [updatedAt, setUpdatedAt] = useState('')
   const role = useCurrentRole()
+  usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
 
   useEffect(() => {
     setUpdatedAt(new Date().toLocaleString('ko-KR'))
