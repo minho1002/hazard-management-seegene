@@ -31,9 +31,8 @@ export default function LoginPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F5F6F8', padding: 20 }}>
       <div style={{ width: 380, maxWidth: '100%', background: '#fff', border: '1px solid #e3e8ef', borderRadius: 14, boxShadow: '0 8px 28px rgba(10,37,64,.08)', padding: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: '#635bff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <i className="fa-solid fa-building-shield" style={{ color: '#fff', fontSize: 16 }} />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/seegene-logo.png" alt="씨젠의료재단" style={{ width: 38, height: 38, borderRadius: 10, objectFit: 'contain' }} />
           <div>
             <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0a2540' }}>하자관리 시스템</div>
             <div style={{ fontSize: '0.7rem', color: '#697386' }}>대전충청검사센터</div>

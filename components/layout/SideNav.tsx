@@ -91,12 +91,13 @@ export default function SideNav() {
         className="flex items-center gap-2.5 px-4"
         style={{ padding: '18px 16px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
-        <div
-          className="flex items-center justify-center flex-shrink-0 rounded-lg"
-          style={{ width: 32, height: 32, background: '#635bff' }}
-        >
-          <i className="fa-solid fa-building-shield text-white" style={{ fontSize: 13 }} />
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/seegene-logo.png"
+          alt="씨젠의료재단"
+          className="flex-shrink-0 rounded-lg"
+          style={{ width: 32, height: 32, objectFit: 'contain' }}
+        />
         <div>
           <p className="text-white font-bold leading-tight" style={{ fontSize: '0.8rem' }}>하자관리</p>
           <p style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>대전충청검사센터</p>

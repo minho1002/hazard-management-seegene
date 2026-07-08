@@ -11,7 +11,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isPublic = PUBLIC_ROUTES.includes(pathname)
 
-  if (isPublic) return <>{children}</>
+  if (isPublic) return <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
 
   return (
     <>
