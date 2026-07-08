@@ -238,6 +238,11 @@ export default function NewDefectPage() {
       setAiResult(result)
       const sevMap: Record<string, string> = { 낮음: 'low', 중: 'medium', 높음: 'high', 긴급: 'critical' }
       const catId = state.categories.find(c => c.name === result.category)?.id
+      const matchedFloor = floorPlans.find(fp => result.location.startsWith(fp.name))
+      if (matchedFloor && matchedFloor.id !== form.floorPlanId) {
+        setLocations([])
+        setSelectedLocationId(null)
+      }
       setForm(f => ({
         ...f,
         title: `${result.location} ${result.symptom}`,
@@ -245,6 +250,7 @@ export default function NewDefectPage() {
         locationText: result.location,
         categoryId: catId ?? '',
         severity: sevMap[result.riskLevel] ?? 'medium',
+        floorPlanId: matchedFloor ? matchedFloor.id : f.floorPlanId,
       }))
       // 이력 기반 비용 예측 자동 수행
       const prediction = estimateCost(state.defects, {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Chart as ChartJS,
@@ -25,6 +25,11 @@ export default function DashboardPage() {
   const { state } = useStore()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const isTablet = useMediaQuery('(max-width: 1024px)')
+  const [updatedAt, setUpdatedAt] = useState('')
+
+  useEffect(() => {
+    setUpdatedAt(new Date().toLocaleString('ko-KR'))
+  }, [])
 
   const defects = state.defects.filter(d => !d.deletedAt)
   const totalCost = defects.reduce((s, d) => s + (d.totalCost || 0), 0)
@@ -170,7 +175,6 @@ export default function DashboardPage() {
   const now = new Date()
   const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const thisMonth = defects.filter(d => d.createdAt && d.createdAt.startsWith(mm)).length
-  const updatedAt = now.toLocaleString('ko-KR')
 
   // Last 12 months
   const months: string[] = []
