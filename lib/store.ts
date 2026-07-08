@@ -379,6 +379,18 @@ export function useStore() {
     setState(next)
   }, [])
 
+  const addCategory = useCallback((name: string): number => {
+    const trimmed = name.trim()
+    const current = loadState()
+    const existing = current.categories.find(c => c.name === trimmed)
+    if (existing) return existing.id
+    const category: Category = { id: nextId(current.categories), name: trimmed, color: '#697386', icon: 'fa-tag' }
+    const next = { ...current, categories: [...current.categories, category] }
+    persistState(next)
+    setState(next)
+    return category.id
+  }, [])
+
   const addDefect = useCallback((data: Omit<Defect, 'id' | 'caseNumber' | 'recurrenceCount' | 'totalCost' | 'createdAt'>) => {
     setState(prev => {
       const defect: Defect = {
@@ -743,6 +755,7 @@ export function useStore() {
 
   return {
     state,
+    addCategory,
     addDefect,
     addDefectAndGetId,
     updateDefect,

@@ -10,9 +10,10 @@ import { useMediaQuery } from '@/lib/useMediaQuery'
 export default function EditDefectPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, updateDefect, saveFloorImage } = useStore()
+  const { state, addCategory, updateDefect, saveFloorImage } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const isTablet = useMediaQuery('(max-width: 1024px)')
+  const [customCategoryName, setCustomCategoryName] = useState('')
 
   const defectRaw = state.defects.find(d => d.id === parseInt(id))
 
@@ -82,6 +83,10 @@ export default function EditDefectPage() {
 
   function submit() {
     if (!form.title.trim()) { alert('제목을 입력하세요.'); return }
+    if (form.categoryId === '__custom__' && !customCategoryName.trim()) { alert('카테고리를 입력하세요.'); return }
+    const categoryId = form.categoryId === '__custom__'
+      ? addCategory(customCategoryName)
+      : (form.categoryId ? Number(form.categoryId) : null)
     updateDefect(defect.id, {
       title: form.title,
       description: form.description || null,
@@ -90,7 +95,7 @@ export default function EditDefectPage() {
       locationX: form.locationX,
       locationY: form.locationY,
       locationText: form.locationText || null,
-      categoryId: form.categoryId ? Number(form.categoryId) : null,
+      categoryId,
       severity: form.severity,
       costType: form.costType,
       reporterName: form.reporterName || null,
@@ -150,7 +155,16 @@ export default function EditDefectPage() {
                     <select style={selectCls} value={form.categoryId} onChange={e => setField('categoryId', e.target.value)}>
                       <option value="">선택</option>
                       {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      <option value="__custom__">+ 직접 입력</option>
                     </select>
+                    {form.categoryId === '__custom__' && (
+                      <input
+                        style={{ ...inputCls, marginTop: 8 }}
+                        placeholder="예: 방수층 손상"
+                        value={customCategoryName}
+                        onChange={e => setCustomCategoryName(e.target.value)}
+                      />
+                    )}
                   </div>
                   <div>
                     <label style={labelCls}>심각도</label>

@@ -34,10 +34,11 @@ const RISK_COLORS: Record<string, { bg: string; text: string; border: string }> 
 
 export default function NewDefectPage() {
   const router = useRouter()
-  const { state, addDefectAndGetId, addDefectLocation, saveFloorImage, addFile } = useStore()
+  const { state, addCategory, addDefectAndGetId, addDefectLocation, saveFloorImage, addFile } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
+  const [customCategoryName, setCustomCategoryName] = useState('')
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
   const [locations, setLocations] = useState<{ id: number; x: number; y: number; label: string }[]>([])
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null)
@@ -158,6 +159,7 @@ export default function NewDefectPage() {
     if (!form.title.trim()) return '하자명을 입력하세요.'
     if (!form.locationText.trim()) return '발생 위치(위치 설명)를 입력하세요.'
     if (!form.categoryId) return '카테고리를 선택하세요.'
+    if (form.categoryId === '__custom__' && !customCategoryName.trim()) return '카테고리를 입력하세요.'
     if (!form.severity) return '심각도를 선택하세요.'
     if (!form.description.trim()) return '상세 설명을 입력하세요.'
     if (form.expectedCompletionDate && form.firstOccurredAt && form.expectedCompletionDate < form.firstOccurredAt) {
@@ -169,6 +171,9 @@ export default function NewDefectPage() {
   async function submit() {
     const error = validate()
     if (error) { alert(error); return }
+    const categoryId = form.categoryId === '__custom__'
+      ? addCategory(customCategoryName)
+      : (form.categoryId ? Number(form.categoryId) : null)
     const id = addDefectAndGetId({
       title: form.title,
       description: form.description || null,
@@ -184,7 +189,7 @@ export default function NewDefectPage() {
       department: form.department || null,
       expectedCompletionDate: form.expectedCompletionDate || null,
       estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : null,
-      categoryId: form.categoryId ? Number(form.categoryId) : null,
+      categoryId,
       severity: form.severity,
       status: 'open',
       costType: form.costType,
@@ -331,7 +336,16 @@ export default function NewDefectPage() {
                     <select style={selectCls} value={form.categoryId} onChange={e => setField('categoryId', e.target.value)}>
                       <option value="">선택</option>
                       {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      <option value="__custom__">+ 직접 입력</option>
                     </select>
+                    {form.categoryId === '__custom__' && (
+                      <input
+                        style={{ ...inputCls, marginTop: 8 }}
+                        placeholder="예: 방수층 손상"
+                        value={customCategoryName}
+                        onChange={e => setCustomCategoryName(e.target.value)}
+                      />
+                    )}
                   </div>
                   <div>
                     <label style={labelCls}>심각도 *</label>
