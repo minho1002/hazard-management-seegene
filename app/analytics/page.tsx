@@ -3,8 +3,12 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useStore, type Defect } from '@/lib/store'
-import { COLORS, isOverdue, STATUS_FLOW, STATUS_META, SEVERITY_META, type SeverityKey } from '@/lib/designTokens'
+import {
+  COLORS, isOverdue, needsAfterPhoto, getPaymentBadge, getCostBearerStatus,
+  STATUS_FLOW, STATUS_META, SEVERITY_META, type SeverityKey,
+} from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
+import StatusBadge from '@/components/ui/StatusBadge'
 
 const DEFECT_TYPE_KEYS = ['하자사항', '일반사항', '확인 필요'] as const
 const COST_BEARER_KEYS = ['시공사', '재단', '외주업체', '사용자', '보험/기타', '미정'] as const
@@ -34,6 +38,7 @@ export default function AnalyticsPage() {
   const [weekStart, setWeekStart] = useState(toYMD(now))
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
+  const [activeUnifiedTab, setActiveUnifiedTab] = useState('recurring')
 
   let from: string | null = null
   let to: string | null = null
@@ -74,7 +79,7 @@ export default function AnalyticsPage() {
   const kpiOverdue = periodDefects.filter(isOverdue).length
   const kpiRecurring = periodDefects.filter(d => d.recurrenceCount > 0).length
   const kpiUnclassified = periodDefects.filter(d => (d.defectType ?? '확인 필요') === '확인 필요').length
-  const kpiCostUnresolved = periodDefects.filter(d => !d.costBearer || d.costBearer === '미정').length
+  const kpiCostUnresolved = periodDefects.filter(d => getCostBearerStatus(d) === '미정').length
   const kpiTotalCost = periodDefects.reduce((s, d) => s + (d.totalCost || 0), 0)
   const avgDurations = completedInRange
     .map(d => {
@@ -103,7 +108,7 @@ export default function AnalyticsPage() {
   const statusAgg = STATUS_FLOW.map(s => ({ key: s, label: STATUS_META[s].label, color: STATUS_META[s].color, count: periodDefects.filter(d => d.status === s).length }))
   const categoryAgg = state.categories.map(c => ({ key: String(c.id), label: c.name, color: c.color, count: periodDefects.filter(d => d.categoryId === c.id).length }))
   const severityAgg = SEVERITY_KEYS.map(s => ({ key: s, label: SEVERITY_META[s].label, color: SEVERITY_META[s].color, count: periodDefects.filter(d => d.severity === s).length }))
-  const costBearerAgg = COST_BEARER_KEYS.map(b => ({ key: b, label: b, color: b === '미정' ? COLORS.danger : COLORS.action, count: periodDefects.filter(d => (d.costBearer || '미정') === b).length }))
+  const costBearerAgg = COST_BEARER_KEYS.map(b => ({ key: b, label: b, color: b === '미정' ? COLORS.danger : COLORS.action, count: periodDefects.filter(d => getCostBearerStatus(d) === b).length }))
   const defectTypeAgg = DEFECT_TYPE_KEYS.map(t => ({ key: t, label: t, color: t === '하자사항' ? COLORS.danger : t === '일반사항' ? COLORS.success : COLORS.textMuted, count: periodDefects.filter(d => (d.defectType ?? '확인 필요') === t).length }))
 
   // ── Top10 테이블 7개 ───────────────────────────────────────────────────
@@ -114,10 +119,25 @@ export default function AnalyticsPage() {
   const costTop10 = [...periodDefects].sort((a, b) => b.totalCost - a.totalCost).slice(0, 10)
   const facilityCounts: Record<string, number> = {}
   periodDefects.forEach(d => { if (d.facilityName) facilityCounts[d.facilityName] = (facilityCounts[d.facilityName] ?? 0) + 1 })
-  const facilityRepeatTop10 = Object.entries(facilityCounts).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10)
+  const facilityRepeatList = periodDefects
+    .filter(d => d.facilityName && facilityCounts[d.facilityName] >= 2)
+    .sort((a, b) => facilityCounts[b.facilityName!] - facilityCounts[a.facilityName!])
+    .slice(0, 10)
   const contractorList = periodDefects.filter(d => d.responsibilityType === '시공사 귀책').slice(0, 10)
   const foundationList = periodDefects.filter(d => d.costBearer === '재단').slice(0, 10)
   const vendorReviewList = periodDefects.filter(d => d.costBearer === '외주업체').slice(0, 10)
+
+  // ── 집계현황 통합 테이블 (탭 전환) — 반복하자/지연하자/고비용하자 등 7개로 흩어져 있던
+  // 미니테이블을 하나의 큰 테이블 + 탭으로 통합한다. 0건인 탭은 숨긴다.
+  const unifiedTabs: { key: string; label: string; rows: Defect[] }[] = [
+    { key: 'recurring', label: '반복 하자 Top 10', rows: recurringTop10 },
+    { key: 'overdue', label: '지연 하자', rows: overdueTop10 },
+    { key: 'cost', label: '고비용 하자', rows: costTop10 },
+    { key: 'facility', label: '설비별 반복', rows: facilityRepeatList },
+    { key: 'contractor', label: '시공사 귀책 가능', rows: contractorList },
+    { key: 'foundation', label: '재단 부담 예상', rows: foundationList },
+    { key: 'vendorReview', label: '외주업체 확인 필요', rows: vendorReviewList },
+  ]
 
   const card = { background: '#fff', border: '1px solid #e3e8ef', borderRadius: 12, boxShadow: '0 1px 3px rgba(10,37,64,0.06)', overflow: 'hidden' as const }
   const inputCls: React.CSSProperties = { border: '1px solid #e3e8ef', borderRadius: 7, padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', color: '#0a2540', background: '#fff', outline: 'none' }
@@ -149,26 +169,84 @@ export default function AnalyticsPage() {
     )
   }
 
-  function DefectMiniTable({ title, rows }: { title: string; rows: Defect[] }) {
+  function actionNeeded(d: Defect): string {
+    if (d.status === 'recheck_needed') return '재점검 필요'
+    if (isOverdue(d)) return '즉시 조치 필요'
+    if (needsAfterPhoto(d, state.files)) return '후사진 필요'
+    const badge = getPaymentBadge(d, state.files)
+    if (badge && badge.tone !== 'success') return '결제 증빙 필요'
+    return '-'
+  }
+
+  function UnifiedDefectTable({ tabs }: { tabs: { key: string; label: string; rows: Defect[] }[] }) {
+    const visibleTabs = tabs.filter(t => t.rows.length > 0)
+    if (visibleTabs.length === 0) return null
+    const current = visibleTabs.find(t => t.key === activeUnifiedTab) ?? visibleTabs[0]
+
     return (
       <div style={card}>
-        <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid #f0f4f8' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>{title}</div>
-          <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>{rows.length}건</div>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid #f0f4f8', display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {visibleTabs.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveUnifiedTab(t.key)}
+              style={{
+                padding: '5px 12px', borderRadius: 999, fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer',
+                border: `1.5px solid ${current.key === t.key ? '#635bff' : '#E5E7EB'}`,
+                background: current.key === t.key ? '#635bff' : '#fff',
+                color: current.key === t.key ? '#fff' : '#425466', fontFamily: 'inherit',
+              }}
+            >
+              {t.label} ({t.rows.length})
+            </button>
+          ))}
         </div>
-        {rows.length === 0 ? (
-          <div style={{ color: '#aab', fontSize: '0.75rem', textAlign: 'center', padding: '20px 0' }}>대상 하자가 없습니다.</div>
-        ) : (
-          <div style={{ padding: '4px 0' }}>
-            {rows.map((d, i) => (
-              <Link key={d.id} href={`/defects/${d.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 18px', textDecoration: 'none', borderBottom: i < rows.length - 1 ? '1px solid #f7f8fa' : 'none' }}>
-                <span style={{ fontFamily: "'SF Mono','Fira Code',monospace", fontSize: '0.68rem', color: '#635bff', flexShrink: 0 }}>{d.caseNumber}</span>
-                <span style={{ fontSize: '0.78rem', color: '#0a2540', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
-                <span style={{ fontSize: '0.7rem', color: '#425466', fontWeight: 600, flexShrink: 0 }}>{fmtKRW(d.totalCost)}</span>
-              </Link>
-            ))}
-          </div>
-        )}
+        <div style={{ overflowX: isTablet ? 'auto' : 'visible' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#fafbfc', borderBottom: '1px solid #e3e8ef' }}>
+                {['순위', '하자명', '위치', '분야', '상태', '외주업체', '비용', '지연일', '반복횟수', '결제상태', '조치필요사항'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '7px 12px', fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: '#697386', whiteSpace: 'nowrap' as const }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {current.rows.map((d, i) => {
+                const cat = state.categories.find(c => c.id === d.categoryId)
+                const vendor = state.vendors.find(v => v.id === d.assignedVendorId)
+                const overdueDays = isOverdue(d) && d.firstOccurredAt ? Math.floor((Date.now() - new Date(d.firstOccurredAt).getTime()) / 86400000) : null
+                const badge = getPaymentBadge(d, state.files)
+                return (
+                  <tr key={d.id} style={{ borderBottom: i < current.rows.length - 1 ? '1px solid #f0f4f8' : 'none' }}>
+                    <td style={{ padding: '7px 12px', fontSize: '0.74rem', color: '#697386' }}>{i + 1}</td>
+                    <td style={{ padding: '7px 12px' }}>
+                      <Link href={`/defects/${d.id}`} style={{ fontSize: '0.78rem', fontWeight: 600, color: '#0a2540', textDecoration: 'none' }}>{d.title}</Link>
+                    </td>
+                    <td style={{ padding: '7px 12px', fontSize: '0.74rem', color: '#697386' }}>{d.locationText || '-'}</td>
+                    <td style={{ padding: '7px 12px' }}>
+                      {cat ? (
+                        <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '1px 7px', borderRadius: 4, background: cat.color + '18', color: cat.color, whiteSpace: 'nowrap' as const }}>{cat.name}</span>
+                      ) : '-'}
+                    </td>
+                    <td style={{ padding: '7px 12px' }}><StatusBadge status={d.status} /></td>
+                    <td style={{ padding: '7px 12px', fontSize: '0.74rem', color: vendor ? '#0a2540' : '#b0bac6', whiteSpace: 'nowrap' as const }}>{vendor ? vendor.name : '자체처리'}</td>
+                    <td style={{ padding: '7px 12px', fontSize: '0.76rem', fontWeight: 600, color: '#0a2540', whiteSpace: 'nowrap' as const }}>{d.totalCost > 0 ? fmtKRW(d.totalCost) : '-'}</td>
+                    <td style={{ padding: '7px 12px', fontSize: '0.74rem', color: overdueDays ? COLORS.warning : '#b0bac6', fontWeight: overdueDays ? 700 : 400 }}>{overdueDays ? `${overdueDays}일` : '-'}</td>
+                    <td style={{ padding: '7px 12px', fontSize: '0.74rem', color: d.recurrenceCount > 0 ? '#be1044' : '#b0bac6', fontWeight: d.recurrenceCount > 0 ? 700 : 400 }}>{d.recurrenceCount > 0 ? `${d.recurrenceCount}회` : '-'}</td>
+                    <td style={{ padding: '7px 12px', fontSize: '0.68rem', whiteSpace: 'nowrap' as const }}>
+                      {badge ? (
+                        <span style={{ fontWeight: 700, color: badge.tone === 'success' ? COLORS.success : badge.tone === 'danger' ? COLORS.danger : badge.tone === 'warning' ? COLORS.warning : '#697386' }}>
+                          {badge.icon} {badge.label}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td style={{ padding: '7px 12px', fontSize: '0.72rem', color: '#425466' }}>{actionNeeded(d)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     )
   }
@@ -237,38 +315,9 @@ export default function AnalyticsPage() {
           <BarList title="하자사항/일반사항 비율" rows={defectTypeAgg} />
         </div>
 
-        {/* Top10 테이블 7개 */}
+        {/* 집계현황 통합 테이블 (탭 전환) — 반복/지연/고비용/설비별반복/시공사귀책/재단부담/외주업체확인 통합 */}
         <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0a2540', marginBottom: 12 }}>상세 테이블</div>
-        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <DefectMiniTable title="반복 하자 Top10" rows={recurringTop10} />
-          <DefectMiniTable title="지연 하자 Top10" rows={overdueTop10} />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <DefectMiniTable title="고비용 하자 Top10" rows={costTop10} />
-          <div style={card}>
-            <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid #f0f4f8' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>설비별 반복 하자 Top10</div>
-              <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 2 }}>동일 설비명 2건 이상</div>
-            </div>
-            {facilityRepeatTop10.length === 0 ? (
-              <div style={{ color: '#aab', fontSize: '0.75rem', textAlign: 'center', padding: '20px 0' }}>대상 설비가 없습니다.</div>
-            ) : (
-              <div style={{ padding: '4px 0' }}>
-                {facilityRepeatTop10.map(([name, count], i) => (
-                  <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 18px', borderBottom: i < facilityRepeatTop10.length - 1 ? '1px solid #f7f8fa' : 'none' }}>
-                    <span style={{ fontSize: '0.78rem', color: '#0a2540' }}>{name}</span>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>{count}건</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr 1fr', gap: 14, marginBottom: 24 }}>
-          <DefectMiniTable title="시공사 귀책 가능 하자 목록" rows={contractorList} />
-          <DefectMiniTable title="재단 부담 예상 하자 목록" rows={foundationList} />
-          <DefectMiniTable title="외주업체 확인 필요 하자 목록" rows={vendorReviewList} />
-        </div>
+        <UnifiedDefectTable tabs={unifiedTabs} />
       </div>
     </div>
   )

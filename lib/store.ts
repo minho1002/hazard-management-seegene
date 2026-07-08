@@ -101,6 +101,18 @@ export interface Defect {
   // 반복 하자 분석 확장 필드 (Phase 2 신규 — 7단계, 관리자가 확정/해제했을 때만 값이 들어감)
   recurringLevel?: '반복 아님' | '반복 의심' | '반복 확정' | '재점검 필요' | '예방조치 진행중' | '예방조치 완료'
   recurringConfirmedReason?: string | null
+  // 비용 처리 상세 / 일정 (2차 고도화 — 260708 요구사항)
+  costHandlingType?: '우리측 부담' | '타업체 청구' | '시공사 부담' | '미정' | null
+  ownCostEstimate?: number | null
+  paymentMethod?: '법인카드' | '계좌이체' | '세금계산서' | '미정' | null
+  claimCostEstimate?: number | null
+  claimTargetVendor?: string | null
+  constructorName?: string | null
+  warrantyRequestYn?: boolean
+  claimOrFreeRepair?: '청구' | '무상보수' | null
+  costUndecidedReason?: string | null
+  vendorVisitDate?: string | null
+  paymentCompletedAt?: string | null
 }
 
 export interface DefectStatusHistory {
@@ -224,6 +236,7 @@ const SEED: AppState = {
     { id: 2, name: '전기', color: '#CF7F2F', icon: 'fa-bolt' },
     { id: 3, name: 'HVAC', color: '#0D9167', icon: 'fa-wind' },
     { id: 4, name: '균열', color: '#CC2943', icon: 'fa-triangle-exclamation' },
+    { id: 5, name: '배수', color: '#7C3AED', icon: 'fa-toilet' },
   ],
   vendors: [
     { id: 1, name: '국보디자인', specialty: '방수/누수' },
@@ -328,6 +341,10 @@ function loadState(): AppState {
         if (!parsed.floorPlans.find(f => f.id === fp.id)) parsed.floorPlans.push(fp)
       })
       parsed.floorPlans.sort((a, b) => a.order - b.order)
+      // Merge new categories from SEED (e.g. 배수) in case they are missing
+      SEED.categories.forEach(c => {
+        if (!parsed.categories.find(existing => existing.name === c.name)) parsed.categories.push(c)
+      })
       return parsed
     }
   } catch (_) {}

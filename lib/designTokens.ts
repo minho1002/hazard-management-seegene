@@ -90,6 +90,55 @@ export function needsAfterPhoto(defect: Defect, files: DefectFile[]): boolean {
   return !files.some(f => f.defectId === defect.id && f.photoType === 'after')
 }
 
+// "종결 여부" — 최종완료(completed) 상태만 완전히 끝난 건으로 취급한다.
+export function isFullyClosed(defect: Defect): boolean {
+  return defect.status === 'completed'
+}
+
+// 대시보드 상단 카테고리 탭(전체/누수/전기/배수/기타)을 위한 분야 그룹핑.
+// 실제 카테고리는 사용자가 자유롭게 추가할 수 있어(누수/전기/HVAC/균열/배수/커스텀),
+// 이름이 4개 고정 탭 중 하나와 일치하지 않으면 전부 "기타"로 묶는다.
+export type FieldTab = '누수' | '전기' | '배수' | '기타'
+export const FIELD_TABS: FieldTab[] = ['누수', '전기', '배수', '기타']
+export function getFieldTab(categoryName: string | null | undefined): FieldTab {
+  if (categoryName === '누수' || categoryName === '전기' || categoryName === '배수') return categoryName
+  return '기타'
+}
+
+// "결제 증빙 및 수단" 배지 — 명시적 receiptStatus 필드 없이, paymentMethod와 첨부파일(견적서/작업확인서)
+// 유무로부터 파생한다.
+export interface PaymentBadge {
+  label: string
+  icon: string
+  tone: 'success' | 'warning' | 'danger' | 'neutral'
+  hasReceipt: boolean
+}
+const PAYMENT_METHOD_ICON: Record<string, string> = {
+  '법인카드': '💳', '계좌이체': '🏦', '세금계산서': '🧾', '미정': '❔',
+}
+// 비용 부담 주체 — 신규 등록(costHandlingType: 우리측 부담/타업체 청구/시공사 부담/미정)과
+// 레거시 귀책판단(costBearer: 시공사/재단/외주업체/...)이 서로 다른 옵션 목록을 갖고 공존한다.
+// 등록 시 한쪽 값을 다른 select에 그대로 넣으면 옵션이 없어 첫 옵션이 잘못 표시되므로
+// (예: '우리측 부담'을 costBearer에 넣으면 select가 임의로 '시공사'를 보여주는 버그),
+// 두 필드를 섞지 않고 "확정 여부" 판정은 이 함수로만 한다 — 신규 필드 우선, 없으면 레거시 폴백.
+export function getCostBearerStatus(defect: Defect): string {
+  return defect.costHandlingType ?? defect.costBearer ?? '미정'
+}
+
+export function getPaymentBadge(defect: Defect, files: DefectFile[]): PaymentBadge | null {
+  if (!defect.totalCost || defect.totalCost <= 0) return null
+  const hasReceipt = files.some(f => f.defectId === defect.id && (f.photoType === 'quote' || f.photoType === 'work_confirmation'))
+  if (!defect.paymentMethod || defect.paymentMethod === '미정') {
+    return { label: '미정산', icon: '❌', tone: 'danger', hasReceipt: false }
+  }
+  return {
+    label: hasReceipt ? `${defect.paymentMethod} · 증빙완료` : `${defect.paymentMethod} · 증빙미첨부`,
+    icon: PAYMENT_METHOD_ICON[defect.paymentMethod] ?? '💰',
+    tone: hasReceipt ? 'success' : 'warning',
+    hasReceipt,
+  }
+}
+
 // 상태 전환 시 필요한 값이 채워져 있는지 검증. null이면 전환 가능, 문자열이면 그 사유로 전환 불가.
 export function getStatusTransitionError(
   defect: Defect,
@@ -100,7 +149,7 @@ export function getStatusTransitionError(
 
   if (target === 'completed') {
     if (!canApproveCompletion(ctx.role)) return '최종완료 승인 권한이 없습니다.'
-    if (!defect.costBearer || defect.costBearer === '미정') {
+    if (getCostBearerStatus(defect) === '미정') {
       return '비용 부담 주체를 확정해야 최종완료할 수 있습니다.'
     }
   }

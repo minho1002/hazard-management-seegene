@@ -9,6 +9,7 @@ import {
   type ReportType,
   type ReportSection,
 } from '@/lib/aiReportService'
+import { COLORS } from '@/lib/designTokens'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -196,6 +197,8 @@ export default function AiReportPage() {
         defects: state.defects.filter(d => !d.deletedAt),
         categories: state.categories,
         vendors: state.vendors,
+        files: state.files,
+        floorPlans: state.floorPlans,
       })
       setReport(result)
     } finally {
@@ -378,18 +381,36 @@ export default function AiReportPage() {
                   <div style={{ fontSize: '0.66rem', color: '#697386', marginTop: 1 }}>Rule-Based 분석 · LLM API 연동 시 더욱 정교한 분석 제공 가능</div>
                 </div>
               </div>
-              <div style={{ fontSize: '0.82rem', lineHeight: 1.75, color: '#0a2540', marginBottom: 14, padding: '12px 14px', background: 'rgba(255,255,255,.75)', borderRadius: 10, border: '1px solid rgba(99,91,255,.12)' }}>
-                {report.aiOpinion}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {report.aiOpinionBullets.map((bullet, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <div style={{ width: 18, height: 18, borderRadius: 4, background: 'rgba(99,91,255,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#635bff' }}>{i + 1}</span>
-                    </div>
-                    <span style={{ fontSize: '0.78rem', color: '#425466', lineHeight: 1.55 }}>{bullet}</span>
+              <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,.75)', borderRadius: 10, border: '1px solid rgba(99,91,255,.12)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  {report.actionPlan.headline.map((line, i) => (
+                    <div key={i} style={{ fontSize: '0.82rem', color: '#0a2540', lineHeight: 1.7, marginBottom: 2 }}>• {line}</div>
+                  ))}
+                </div>
+                {report.actionPlan.immediateActions.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: COLORS.danger, marginBottom: 4 }}>즉시 조치 필요</div>
+                    {report.actionPlan.immediateActions.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
                   </div>
-                ))}
+                )}
+                {report.actionPlan.costRisk.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#B06B1A', marginBottom: 4 }}>비용 / 결제 리스크</div>
+                    {report.actionPlan.costRisk.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
+                  </div>
+                )}
+                {report.actionPlan.recurringWarning.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#635bff', marginBottom: 4 }}>반복 발생 경고</div>
+                    {report.actionPlan.recurringWarning.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
+                  </div>
+                )}
+                {report.actionPlan.approvalNeeded.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#0F7850', marginBottom: 4 }}>관리자 결재 필요</div>
+                    {report.actionPlan.approvalNeeded.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
+                  </div>
+                )}
               </div>
             </div>
 

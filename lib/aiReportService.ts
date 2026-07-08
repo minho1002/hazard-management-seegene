@@ -1,4 +1,5 @@
-import type { Defect, Category, Vendor } from '@/lib/store'
+import type { Defect, Category, Vendor, DefectFile, FloorPlan } from '@/lib/store'
+import { isOverdue, isRecurring, needsTodayAction, getPaymentBadge } from '@/lib/designTokens'
 
 export type ReportType = 'field-analysis' | 'budget-settlement' | 'executive-ppt' | 'recurring-defects' | 'cost-bearer' | 'defect-classification'
 
@@ -32,8 +33,7 @@ export interface GeneratedReport {
   period: string
   generatedAt: string
   sections: ReportSection[]
-  aiOpinion: string
-  aiOpinionBullets: string[]
+  actionPlan: ActionPlanOpinion
   basedOn: 'rule-based' | 'llm'
   metadata: { totalDefects: number; completionRate: number; totalCost: number }
   preparedBy: string
@@ -43,6 +43,8 @@ export interface ReportInput {
   defects: Defect[]
   categories: Category[]
   vendors: Vendor[]
+  files: DefectFile[]
+  floorPlans: FloorPlan[]
 }
 
 // ── Helper ─────────────────────────────────────────────────────────────────
@@ -54,142 +56,97 @@ function fmtMan(v: number): string {
   return '-'
 }
 
-// ── AI Opinion (rule-based — swap body for LLM call to change provider) ────
+// ── Action-Plan 종합의견 (대시보드 / 집계현황 공용) ─────────────────────────
+// 표의 숫자를 그대로 읽어주는 요약을 금지하고, 반드시 "숫자 → 리스크/원인 → 조치 제안"
+// 형태의 문장으로 구성한다. 규칙 기반이며, 추후 LLM 호출로 교체 가능하도록
+// generateActionPlanOpinion() 하나만 교체하면 되게 분리해 둔다.
 
-function generateAiOpinion(type: ReportType, input: ReportInput): { opinion: string; bullets: string[] } {
-  const { defects, categories } = input
-  const total = defects.length
-  const completed = defects.filter(d => d.status === 'completed').length
-  const completionRate = total > 0 ? Math.round(completed / total * 100) : 0
-  const totalCost = defects.reduce((s, d) => s + d.totalCost, 0)
-  const highRisk = defects.filter(d => d.severity === 'critical' || d.severity === 'high')
-  const openCriticals = defects.filter(d => d.severity === 'critical' && d.status !== 'completed')
-  const recurring = defects.filter(d => d.recurrenceCount > 0)
+export interface ActionPlanOpinion {
+  headline: string[]          // 핵심 판단 3줄
+  immediateActions: string[]  // 오늘 처리해야 할 미완결 건
+  costRisk: string[]          // 비용/결제 리스크
+  recurringWarning: string[]  // 반복 발생 구역 경고
+  approvalNeeded: string[]    // 관리자 결재/보고 필요 항목
+}
 
-  const catCounts = categories.map(c => ({
-    ...c,
-    count: defects.filter(d => d.categoryId === c.id).length,
-    recurred: defects.filter(d => d.categoryId === c.id && d.recurrenceCount > 0).length,
-  })).sort((a, b) => b.count - a.count)
-  const topCat = catCounts[0]
-  const topPct = total > 0 && topCat ? Math.round(topCat.count / total * 100) : 0
+export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[], floorPlans: FloorPlan[]): ActionPlanOpinion {
+  const open = defects.filter(d => d.status !== 'completed')
+  const overdue = open.filter(isOverdue)
+  const todayItems = open.filter(needsTodayAction)
+  const recurring = open.filter(isRecurring)
+  const actionDoneAwaiting = defects.filter(d => d.status === 'action_done')
+  const unresolvedCost = open.filter(d => !d.costBearer || d.costBearer === '미정')
+  const unpaid = defects.filter(d => (d.totalCost ?? 0) > 0 && getPaymentBadge(d, files)?.tone !== 'success')
 
-  if (type === 'field-analysis') {
-    return {
-      opinion: `분야별 분석 결과, ${topCat?.name ?? '주요'} 분야가 전체 하자의 ${topPct}%를 차지하며 가장 높은 발생 빈도를 보입니다. 처리 완료율 ${completionRate}%, 고위험 하자 ${highRisk.length}건으로 집중 관리가 필요합니다.`,
-      bullets: [
-        `${topCat?.name ?? ''} 분야 집중 발생 (전체의 ${topPct}%) — 원인 분석 및 예방 조치 강화 권고`,
-        completionRate < 70
-          ? `처리 완료율 ${completionRate}% — 미처리 하자 우선순위 재검토 필요`
-          : `처리 완료율 ${completionRate}% — 양호 수준, 지속 모니터링 권고`,
-        highRisk.length > 0
-          ? `긴급·고위험 하자 ${highRisk.length}건 — 즉시 처리 또는 전문업체 투입 검토`
-          : '현재 긴급 위험 하자 없음 — 예방적 점검 체계 유지',
-        catCounts.filter(c => c.recurred > 0).length > 0
-          ? `재발 이력 분야: ${catCounts.filter(c => c.recurred > 0).map(c => c.name).join(', ')} — 근본원인 재점검 권고`
-          : '재발 이력 하자 없음 — 현재 관리 체계 유지',
-      ],
-    }
+  // 구역(층)별 반복 집계 — 3회 이상 발생한 구역을 "반복 위험 구역"으로 판단
+  const zoneCounts: Record<string, { count: number; vendorNames: Set<number> }> = {}
+  defects.forEach(d => {
+    const fp = floorPlans.find(f => f.id === d.floorPlanId)
+    if (!fp) return
+    const key = fp.name
+    if (!zoneCounts[key]) zoneCounts[key] = { count: 0, vendorNames: new Set() }
+    zoneCounts[key].count++
+    if (d.assignedVendorId) zoneCounts[key].vendorNames.add(d.assignedVendorId)
+  })
+  const riskZones = Object.entries(zoneCounts).filter(([, v]) => v.count >= 3).sort((a, b) => b[1].count - a[1].count)
+
+  const ownCostTotal = defects
+    .filter(d => (d.costHandlingType ?? (d.costType === 'our' ? '우리측 부담' : null)) === '우리측 부담')
+    .reduce((s, d) => s + (d.totalCost ?? 0), 0)
+
+  const headline: string[] = []
+  if (todayItems.length > 0) {
+    headline.push(`오늘 우선처리 대상은 ${overdue.length > 0 ? `지연 ${overdue.length}건` : ''}${overdue.length > 0 && unresolvedCost.length > 0 ? ', ' : ''}${unresolvedCost.length > 0 ? `비용부담 미정 ${unresolvedCost.length}건` : ''}${overdue.length === 0 && unresolvedCost.length === 0 ? `${todayItems.length}건` : ''}이며, 우선순위대로 처리하지 않으면 지연이 누적됩니다.`)
+  } else {
+    headline.push('오늘 시급하게 처리할 미완결 건은 없습니다.')
+  }
+  if (riskZones.length > 0) {
+    const [zoneName, zoneInfo] = riskZones[0]
+    headline.push(`${zoneName}에서 하자가 ${zoneInfo.count}회 이상 반복 발생해 동일 구역에 구조적 원인이 있는지 재점검이 필요합니다.`)
+  }
+  if (unpaid.length > 0) {
+    headline.push(`결제·증빙이 끝나지 않은 건이 ${unpaid.length}건 있어 이번 달 비용 정산이 지연될 수 있습니다.`)
+  } else if (headline.length < 3) {
+    headline.push('결제·증빙 미완료 건은 없어 이번 달 비용 정산 리스크는 낮습니다.')
   }
 
-  if (type === 'budget-settlement') {
-    const monthsWithData = new Set(
-      defects.filter(d => d.firstOccurredAt).map(d => d.firstOccurredAt!.slice(0, 7))
-    ).size || 1
-    const avgMonthly = Math.round(totalCost / monthsWithData)
-    const predDefs = defects.filter(d => d.predictedCostAvg && d.totalCost > 0 && d.predictionErrorRate != null)
-    const avgErr = predDefs.length > 0
-      ? Math.round(predDefs.reduce((s, d) => s + (d.predictionErrorRate ?? 0), 0) / predDefs.length)
-      : null
-    return {
-      opinion: `총 누적 처리 비용 ${fmtMan(totalCost)}, 건당 평균 ${fmtMan(total > 0 ? Math.round(totalCost / total) : 0)}으로 집계됩니다. 월평균 ${fmtMan(avgMonthly)} 수준의 유지보수 비용이 지속 발생하고 있어 연간 예산 계획 수립 시 참고가 필요합니다.`,
-      bullets: [
-        `총 누적 처리 비용: ${fmtMan(totalCost)} (건당 평균 ${fmtMan(total > 0 ? Math.round(totalCost / total) : 0)})`,
-        `월평균 유지보수 비용: ${fmtMan(avgMonthly)} → 연간 예상 ${fmtMan(avgMonthly * 12)} 필요`,
-        avgErr !== null
-          ? `AI 비용 예측 평균 오차율: ${avgErr}% — ${avgErr < 20 ? '예측 신뢰도 양호' : '예측 정확도 개선 필요'}`
-          : 'AI 비용 예측 데이터 없음 — 하자 등록 시 AI 분석 활성화 권고',
-        `비용 미입력 하자 ${defects.filter(d => d.totalCost === 0).length}건 — 처리 비용 입력 완료 여부 확인 권고`,
-      ],
-    }
-  }
+  const immediateActions: string[] = []
+  if (overdue.length > 0) immediateActions.push(`지연 중인 ${overdue.length}건은 처리 기한을 초과했으므로 담당자 배정 및 업체 방문 일정을 즉시 재조율해야 합니다.`)
+  if (actionDoneAwaiting.length > 0) immediateActions.push(`조치완료 요청이 올라온 ${actionDoneAwaiting.length}건은 관리자 최종 확인 대기 중이며, 승인이 늦어지면 종결 처리가 밀립니다.`)
+  if (recurring.length > 0) immediateActions.push(`재발 이력이 있는 ${recurring.length}건은 동일 원인 재발 가능성이 높아 조치 전/후 사진과 조치 내용을 비교 확인해야 합니다.`)
 
-  if (type === 'recurring-defects') {
-    const recurring = defects.filter(d => d.recurrenceCount > 0 || d.recurringLevel === '반복 확정' || d.recurringLevel === '반복 의심')
-    const confirmed = defects.filter(d => d.recurringLevel === '반복 확정' || d.recurrenceCount > 0)
-    const recurringCost = recurring.reduce((s, d) => s + d.totalCost, 0)
-    return {
-      opinion: `전체 ${total}건 중 ${recurring.length}건이 반복 발생 하자로 분류되며(확정 ${confirmed.length}건), 관련 누적 비용은 ${fmtMan(recurringCost)}입니다. 반복 하자는 근본 원인 미해결 가능성이 높아 우선 점검이 필요합니다.`,
-      bullets: [
-        `반복 하자 ${recurring.length}건 (확정 ${confirmed.length}건) — 전체의 ${total > 0 ? Math.round(recurring.length / total * 100) : 0}%`,
-        `반복 하자 관련 누적 비용: ${fmtMan(recurringCost)} — 근본 원인 해결 시 비용 절감 가능`,
-        recurring.length > 0
-          ? `최다 재발 건: ${recurring.slice().sort((a, b) => b.recurrenceCount - a.recurrenceCount)[0]?.title ?? ''} — 우선 정밀점검 권고`
-          : '현재 반복 발생 하자 없음',
-        '반복 확정/해제는 관리자 검토를 거쳐야 하며, 확인되지 않은 반복 의심 건은 재점검 권고',
-      ],
-    }
-  }
+  const costRisk: string[] = []
+  if (unresolvedCost.length > 0) costRisk.push(`비용 부담 주체가 미정인 ${unresolvedCost.length}건은 최종완료 처리가 불가능한 상태이므로, 시공사·재단·외주업체 중 귀책 판단을 먼저 확정해야 합니다.`)
+  if (unpaid.length > 0) costRisk.push(`결제수단 또는 증빙이 누락된 ${unpaid.length}건은 회계 정산 시 반려될 수 있어, 법인카드/계좌이체 등 결제 수단과 증빙 서류를 먼저 확보해야 합니다.`)
+  if (ownCostTotal > 0) costRisk.push(`우리측(재단) 부담 누적 비용이 ${fmtMan(ownCostTotal)}에 달해, 예산 초과가 우려되면 조기에 경영진 보고가 필요합니다.`)
 
-  if (type === 'cost-bearer') {
-    const unresolved = defects.filter(d => !d.costBearer || d.costBearer === '미정')
-    const byBearer = ['시공사', '재단', '외주업체'].map(b => ({
-      name: b, cost: defects.filter(d => d.costBearer === b).reduce((s, d) => s + d.totalCost, 0),
-    }))
-    const topBearer = byBearer.slice().sort((a, b) => b.cost - a.cost)[0]
-    return {
-      opinion: `비용 부담 주체가 확정된 하자의 부담 금액은 ${topBearer && topBearer.cost > 0 ? `${topBearer.name} ${fmtMan(topBearer.cost)}이 최대` : '아직 뚜렷한 경향이 없음'}이며, 비용 부담 미정 건이 ${unresolved.length}건 남아있어 확정 작업이 필요합니다.`,
-      bullets: [
-        `비용 부담 미정 ${unresolved.length}건 — 관리자 확정 필요(최종완료 처리 전 확정 필수)`,
-        ...byBearer.filter(b => b.cost > 0).map(b => `${b.name} 부담 예상 금액: ${fmtMan(b.cost)}`),
-        unresolved.length > total * 0.3
-          ? '비용 부담 미정 비율이 높음 — 하자구분/귀책판단 단계 검토 지연 여부 확인 권고'
-          : '비용 부담 확정 진행률 양호',
-      ],
-    }
-  }
+  const recurringWarning: string[] = riskZones.slice(0, 3).map(([zoneName, v]) =>
+    `${zoneName} — 누적 ${v.count}건 발생${v.vendorNames.size === 1 ? ' (동일 외주업체 조치 후 재발 이력 있음, 시공 품질 재검토 필요)' : ''}.`
+  )
 
-  if (type === 'defect-classification') {
-    const defectType = defects.filter(d => d.defectType === '하자사항').length
-    const generalType = defects.filter(d => d.defectType === '일반사항').length
-    const unclassified = defects.filter(d => (d.defectType ?? '확인 필요') === '확인 필요').length
-    const disputed = defects.filter(d => d.reviewStatus === '분쟁가능' || d.reviewStatus === '이견있음').length
-    return {
-      opinion: `전체 ${total}건 중 하자사항 ${defectType}건, 일반사항 ${generalType}건, 확인 필요 ${unclassified}건으로 분류됩니다. 분쟁 가능 또는 이견 있는 건이 ${disputed}건 있어 우선 검토가 필요합니다.`,
-      bullets: [
-        `하자사항(시공사 귀책 가능) ${defectType}건 — 시공사 하자보수 요청 검토`,
-        `일반사항(재단/외주업체 부담) ${generalType}건`,
-        `확인 필요 ${unclassified}건 — 관리자 검토 후 구분 확정 필요`,
-        disputed > 0
-          ? `분쟁 가능/이견 있음 ${disputed}건 — 우선 검토 및 협의 필요`
-          : '분쟁 가능 건 없음 — 양호',
-      ],
-    }
-  }
+  const approvalNeeded: string[] = []
+  if (actionDoneAwaiting.length > 0) approvalNeeded.push(`조치완료 승인 대기 ${actionDoneAwaiting.length}건 — 관리자 최종완료 승인 필요.`)
+  if (unresolvedCost.length > 0) approvalNeeded.push(`비용 부담 주체 확정 대기 ${unresolvedCost.length}건 — 관리자 확정 필요.`)
+  const highRiskUnclassified = defects.filter(d => d.status !== 'completed' && (d.severity === 'critical' || d.severity === 'high') && (d.defectType ?? '확인 필요') === '확인 필요')
+  if (highRiskUnclassified.length > 0) approvalNeeded.push(`고위험(긴급/높음) 등급인데 하자구분이 미확정인 ${highRiskUnclassified.length}건 — 경영진 보고 전 하자사항/일반사항 구분 확정 필요.`)
 
-  // executive-ppt
-  const healthScore = Math.max(0, Math.min(100,
-    completionRate * 0.4 +
-    (openCriticals.length === 0 ? 100 : Math.max(0, 100 - openCriticals.length * 25)) * 0.35 +
-    (recurring.length === 0 ? 100 : Math.max(0, 100 - recurring.length * 10)) * 0.25
-  ))
-  const healthLabel = healthScore >= 80 ? '양호' : healthScore >= 60 ? '보통' : '주의 필요'
-  const monthsData = new Set(
-    defects.filter(d => d.firstOccurredAt).map(d => d.firstOccurredAt!.slice(0, 7))
-  ).size || 1
   return {
-    opinion: `시설 관리 종합 평가 결과 건강도 점수 ${Math.round(healthScore)}점(${healthLabel}) 수준입니다. 전체 ${total}건 중 ${completed}건(${completionRate}%) 처리 완료, 누적 비용 ${fmtMan(totalCost)}이 집행되었습니다.`,
-    bullets: [
-      `시설 건강도: ${Math.round(healthScore)}점 (${healthLabel}) — 처리율·위험도·재발률 종합 산출`,
-      openCriticals.length > 0
-        ? `미처리 긴급 하자 ${openCriticals.length}건 — 즉각적 자원 배분 필요`
-        : '긴급 미처리 하자 없음 — 위험 관리 양호',
-      `연간 예상 유지보수 비용: ${fmtMan(Math.round(totalCost / monthsData * 12))} — 예산 확보 권고`,
-      recurring.length > 0
-        ? `재발 하자 ${recurring.length}건 — AI 기반 예방 정비 전환으로 비용 절감 가능`
-        : '재발 하자 없음 — 예방 정비 체계 유지 권고',
-    ],
+    headline: headline.slice(0, 3),
+    immediateActions,
+    costRisk,
+    recurringWarning,
+    approvalNeeded,
   }
+}
+
+// ── AI 종합의견 (보고서 유형별 Action-Plan) — 숫자만 나열하는 대신, 보고서 유형에
+// 맞는 하자 범위를 골라 generateActionPlanOpinion() 하나로 위임한다(중복 생성기 방지).
+
+function opinionScopeFor(type: ReportType, defects: Defect[]): Defect[] {
+  if (type === 'recurring-defects') {
+    return defects.filter(d => d.recurrenceCount > 0 || d.recurringLevel === '반복 확정' || d.recurringLevel === '반복 의심')
+  }
+  return defects
 }
 
 // ── Section builders ───────────────────────────────────────────────────────
@@ -506,7 +463,7 @@ function mockGenerate(type: ReportType, input: ReportInput): GeneratedReport {
     'defect-classification':  ['하자사항/일반사항 구분 보고서', '귀책 구분 및 관리자 검토 필요 항목'],
   }
   const [title, subtitle] = TITLES[type]
-  const { opinion, bullets } = generateAiOpinion(type, input)
+  const actionPlan = generateActionPlanOpinion(opinionScopeFor(type, input.defects), input.files, input.floorPlans)
   const sections =
     type === 'field-analysis'        ? buildFieldAnalysisSections(input) :
     type === 'budget-settlement'     ? buildBudgetSections(input) :
@@ -520,8 +477,7 @@ function mockGenerate(type: ReportType, input: ReportInput): GeneratedReport {
     period: `${now.getFullYear()}년 ${now.getMonth() + 1}월 기준`,
     generatedAt: now.toLocaleString('ko-KR'),
     sections,
-    aiOpinion: opinion,
-    aiOpinionBullets: bullets,
+    actionPlan,
     basedOn: 'rule-based',
     preparedBy: '시설관리팀',
     metadata: {
