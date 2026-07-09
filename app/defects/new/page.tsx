@@ -170,17 +170,14 @@ export default function NewDefectPage() {
     if (selectedLocationId === id) setSelectedLocationId(null)
   }
 
-  function handleFloorImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFloorImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) { alert('5MB 이하 이미지만 업로드 가능합니다.'); return }
-    const reader = new FileReader()
-    reader.onload = ev => {
-      if (ev.target?.result) {
-        saveFloorImage(form.floorPlanId, ev.target.result as string)
-      }
-    }
-    reader.readAsDataURL(file)
+    // 원본 그대로 저장하면 도면을 여러 층에 올릴 경우 localStorage 용량 한도(브라우저별 5~10MB)를
+    // 금방 넘어서 저장이 조용히 실패할 수 있다 — 하자 사진과 동일하게 압축 후 저장한다.
+    const dataUrl = await compressImage(file)
+    saveFloorImage(form.floorPlanId, dataUrl)
     e.target.value = ''
   }
 

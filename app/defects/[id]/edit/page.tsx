@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
+import { compressImage } from '@/lib/imageCompress'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
@@ -79,15 +80,12 @@ export default function EditDefectPage() {
     setForm(f => ({ ...f, locationX: x, locationY: y }))
   }
 
-  function handleFloorImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFloorImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) { alert('5MB 이하 이미지만 업로드 가능합니다.'); return }
-    const reader = new FileReader()
-    reader.onload = ev => {
-      if (ev.target?.result) saveFloorImage(form.floorPlanId, ev.target.result as string)
-    }
-    reader.readAsDataURL(file)
+    const dataUrl = await compressImage(file)
+    saveFloorImage(form.floorPlanId, dataUrl)
     e.target.value = ''
   }
 
