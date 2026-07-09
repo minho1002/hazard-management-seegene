@@ -20,6 +20,7 @@ const RECURRING_LEVEL_OPTIONS = ['반복 아님', '반복 의심', '반복 확�
 const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
 const RESPONSIBILITY_OPTIONS = ['시공사 귀책', '재단/운영측 부담', '외주업체 부담', '사용자 과실', '소모품/노후', '원인 불명', '분쟁 가능']
 const COST_BEARER_OPTIONS = ['시공사', '재단', '외주업체', '사용자', '보험/기타', '미정']
+const PAYMENT_METHOD_OPTIONS = ['법인카드', '계좌이체', '세금계산서', '미정'] as const
 const WARRANTY_OPTIONS = ['보증기간 내', '보증기간 외', '확인 필요'] as const
 const REVIEW_STATUS_OPTIONS = ['미검토', '검토중', '확정', '이견있음', '분쟁가능', '재검토필요'] as const
 const COST_APPROVAL_OPTIONS = ['미승인', '승인대기', '승인완료', '반려', '협의중'] as const
@@ -50,7 +51,7 @@ function fmtKRW(n: number | null | undefined) {
 export default function DefectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { state, updateDefectStatus, updateClassification, softDeleteDefect, addLog, saveFloorImage, addDefectLocation, updateDefectLocation, updateDefectLocationPosition, removeDefectLocation, clearDefectLocations, updateRecurringStatus } = useStore()
+  const { state, updateDefect, updateDefectStatus, updateClassification, softDeleteDefect, addLog, saveFloorImage, addDefectLocation, updateDefectLocation, updateDefectLocationPosition, removeDefectLocation, clearDefectLocations, updateRecurringStatus } = useStore()
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null)
@@ -546,6 +547,16 @@ export default function DefectDetailPage() {
                           {reviewStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>결제 수단</label>
+                        <select
+                          style={classifySelectStyle}
+                          value={defect.paymentMethod ?? '미정'}
+                          onChange={e => updateDefect(defect.id, { paymentMethod: e.target.value as Defect['paymentMethod'] })}
+                        >
+                          {PAYMENT_METHOD_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
                       <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <input type="checkbox" id="isWarrantyClaimTarget" checked={classifyForm.isWarrantyClaimTarget} onChange={e => setClassifyField('isWarrantyClaimTarget', e.target.checked)} />
                         <label htmlFor="isWarrantyClaimTarget" style={{ fontSize: '0.78rem', color: '#425466', cursor: 'pointer' }}>하자보수 청구 대상</label>
@@ -572,6 +583,7 @@ export default function DefectDetailPage() {
                     <div>비용 승인 상태: {defect.costApprovalStatus || '미승인'}</div>
                     <div>보증기간 여부: {defect.warrantyStatus || '확인 필요'}</div>
                     <div>검토 상태: {defect.reviewStatus || '미검토'}</div>
+                    <div>결제 수단: {defect.paymentMethod || '미정'}</div>
                   </div>
                 )}
               </div>
