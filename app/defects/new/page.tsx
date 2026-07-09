@@ -44,8 +44,10 @@ const RISK_COLORS: Record<string, { bg: string; text: string; border: string }> 
 
 export default function NewDefectPage() {
   const router = useRouter()
-  const { state, addCategory, addDefectAndGetId, addDefectLocation, saveFloorImage, addFile } = useStore()
+  const { state, addCategory, addVendor, addDefectAndGetId, addDefectLocation, saveFloorImage, addFile } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const modalMapContainerRef = useRef<HTMLDivElement>(null)
+  const [floorZoomOpen, setFloorZoomOpen] = useState(false)
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
   const [customCategoryName, setCustomCategoryName] = useState('')
@@ -64,7 +66,7 @@ export default function NewDefectPage() {
     severity: 'medium',
     status: 'open',
     reporterName: '',
-    assignedVendorId: '' as string | number,
+    vendorName: '',
     managerName: '김관리',
     firstOccurredAt: new Date().toISOString().slice(0, 10),
     zone: '',
@@ -137,12 +139,7 @@ export default function NewDefectPage() {
     setSelectedLocationId(null)
   }
 
-  function onMapClick(e: React.MouseEvent<HTMLDivElement>) {
-    const cont = mapContainerRef.current
-    if (!cont) return
-    const r = cont.getBoundingClientRect()
-    const x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10
-    const y = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10
+  function addLocationAtPercent(x: number, y: number) {
     const id = nextTempId.current++
     // 클릭한 좌표가 도면 위 기계실/전기실 등 미리 정의된 구역과 겹치면 구역/실명을 자동 매핑한다.
     const zone = findFloorZoneAt(form.floorPlanId, x, y)
@@ -155,6 +152,26 @@ export default function NewDefectPage() {
         roomName: !zone.isZone ? zone.name : f.roomName,
       }))
     }
+  }
+
+  function clickPercentFromEvent(e: React.MouseEvent<HTMLDivElement>, cont: HTMLDivElement) {
+    const r = cont.getBoundingClientRect()
+    const x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10
+    const y = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10
+    return { x, y }
+  }
+
+  // 작은 미리보기 도면 클릭 — 바로 찍기엔 너무 작아 오차가 크므로, 클릭하면 확대 모달을 연다.
+  function onMapClick() {
+    setFloorZoomOpen(true)
+  }
+
+  // 확대 모달 안의 큰 도면 클릭 — 실제 위치 지정은 여기서 한다.
+  function onModalMapClick(e: React.MouseEvent<HTMLDivElement>) {
+    const cont = modalMapContainerRef.current
+    if (!cont) return
+    const { x, y } = clickPercentFromEvent(e, cont)
+    addLocationAtPercent(x, y)
   }
 
   function moveLocation(id: number, x: number, y: number) {
@@ -250,7 +267,7 @@ export default function NewDefectPage() {
       status: form.status,
       costType: legacyCostType[form.costHandlingType],
       reporterName: form.reporterName || null,
-      assignedVendorId: form.assignedVendorId ? Number(form.assignedVendorId) : null,
+      assignedVendorId: form.vendorName.trim() ? addVendor(form.vendorName) : null,
       managerName: form.managerName || '김관리',
       firstOccurredAt: form.firstOccurredAt || null,
       lastOccurredAt: form.firstOccurredAt || null,
@@ -439,10 +456,16 @@ export default function NewDefectPage() {
                   </div>
                   <div>
                     <label style={labelCls}>외주업체</label>
-                    <select style={selectCls} value={form.assignedVendorId} onChange={e => setField('assignedVendorId', e.target.value)}>
-                      <option value="">미지정(자체처리)</option>
-                      {state.vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                    </select>
+                    <input
+                      style={inputCls}
+                      list="vendor-name-suggestions"
+                      placeholder="예: 국보디자인 (미입력 시 자체처리)"
+                      value={form.vendorName}
+                      onChange={e => setField('vendorName', e.target.value)}
+                    />
+                    <datalist id="vendor-name-suggestions">
+                      {state.vendors.map(v => <option key={v.id} value={v.name} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label style={labelCls}>담당자</label>
@@ -848,7 +871,7 @@ export default function NewDefectPage() {
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', color: '#635bff', fontWeight: 600, background: 'rgba(99,91,255,.09)', padding: '4px 9px', borderRadius: 6 }}>
-                    <i className="fa-solid fa-crosshairs" /> 도면 클릭으로 위치 선택
+                    <i className="fa-solid fa-magnifying-glass-plus" /> 도면 클릭하여 확대 후 위치 지정
                   </span>
                   <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.66rem', color: '#635bff', fontWeight: 600, padding: '3px 9px', border: '1.5px solid #635bff', borderRadius: 6 }}>
                     <i className="fa-solid fa-upload" /> 도면 이미지 업로드
@@ -858,7 +881,7 @@ export default function NewDefectPage() {
 
                 <div
                   ref={mapContainerRef}
-                  style={{ position: 'relative', cursor: 'crosshair', border: '1px solid #e3e8ef', borderRadius: 8 }}
+                  style={{ position: 'relative', cursor: 'zoom-in', border: '1px solid #e3e8ef', borderRadius: 8 }}
                   onClick={onMapClick}
                 >
                   <div dangerouslySetInnerHTML={{ __html: floorSvg }} />
@@ -869,6 +892,9 @@ export default function NewDefectPage() {
                     selectedId={selectedLocationId}
                     containerRef={mapContainerRef}
                   />
+                  <div style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: '50%', background: 'rgba(10,37,64,.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', pointerEvents: 'none' }}>
+                    <i className="fa-solid fa-expand" />
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
@@ -916,7 +942,7 @@ export default function NewDefectPage() {
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#635bff', marginBottom: 8 }}>등록 안내</div>
               <ul style={{ fontSize: '0.73rem', color: '#4f46e5', lineHeight: 2, listStyle: 'none' }}>
                 <li>• 케이스번호는 자동 생성됩니다</li>
-                <li>• 도면 클릭 시 위치가 추가됩니다(여러 개 가능)</li>
+                <li>• 도면 클릭 시 확대되며, 확대된 도면에서 위치를 지정합니다(여러 개 가능)</li>
                 <li>• 마커는 드래그로 위치를 옮길 수 있습니다</li>
                 <li>• 등록 후 이력을 추가할 수 있습니다</li>
               </ul>
@@ -944,6 +970,53 @@ export default function NewDefectPage() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={photoPreviewUrl} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 10, boxShadow: '0 8px 28px rgba(10,37,64,.3)' }} />
+        </div>
+      )}
+
+      {floorZoomOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(10,37,64,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={e => { if (e.target === e.currentTarget) setFloorZoomOpen(false) }}
+        >
+          <div style={{ width: 'min(980px,94vw)', maxHeight: '92vh', background: '#fff', borderRadius: 14, boxShadow: '0 12px 40px rgba(10,37,64,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid #eef0f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0a2540' }}>
+                <i className="fa-solid fa-crosshairs" style={{ color: '#635bff', marginRight: 6 }} />
+                도면 클릭으로 위치 지정 — {floorPlans.find(f => f.id === form.floorPlanId)?.name ?? ''}
+              </div>
+              <button
+                onClick={() => setFloorZoomOpen(false)}
+                style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #e3e8ef', background: '#fff', cursor: 'pointer', color: '#697386', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div style={{ padding: 18, overflow: 'auto' }}>
+              <div
+                ref={modalMapContainerRef}
+                style={{ position: 'relative', cursor: 'crosshair', border: '1px solid #e3e8ef', borderRadius: 8 }}
+                onClick={onModalMapClick}
+              >
+                <div dangerouslySetInnerHTML={{ __html: floorSvg }} />
+                <FloorLocationMarkers
+                  markers={locations}
+                  onMove={moveLocation}
+                  onSelect={setSelectedLocationId}
+                  selectedId={selectedLocationId}
+                  containerRef={modalMapContainerRef}
+                />
+              </div>
+            </div>
+            <div style={{ padding: '10px 18px', borderTop: '1px solid #eef0f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <span style={{ fontSize: '0.75rem', color: '#635bff', fontWeight: 600 }}>총 {locations.length}개 위치가 선택되었습니다 (계속 클릭해 여러 곳 지정 가능)</span>
+              <button
+                onClick={() => setFloorZoomOpen(false)}
+                style={{ padding: '7px 18px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: 'none', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}
+              >
+                완료
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

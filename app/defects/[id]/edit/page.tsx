@@ -16,6 +16,8 @@ export default function EditDefectPage() {
   const router = useRouter()
   const { state, addCategory, updateDefect, saveFloorImage } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const modalMapContainerRef = useRef<HTMLDivElement>(null)
+  const [floorZoomOpen, setFloorZoomOpen] = useState(false)
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [customCategoryName, setCustomCategoryName] = useState('')
   const role = useCurrentRole()
@@ -71,8 +73,14 @@ export default function EditDefectPage() {
     setForm(f => ({ ...f, floorPlanId: fid, locationX: null, locationY: null }))
   }
 
-  function onMapClick(e: React.MouseEvent<HTMLDivElement>) {
-    const cont = mapContainerRef.current
+  // 작은 미리보기 도면은 클릭해도 바로 찍기엔 오차가 크므로, 클릭하면 확대 모달을 연다.
+  function onMapClick() {
+    setFloorZoomOpen(true)
+  }
+
+  // 확대 모달 안의 큰 도면 클릭 — 실제 위치 지정은 여기서 한다.
+  function onModalMapClick(e: React.MouseEvent<HTMLDivElement>) {
+    const cont = modalMapContainerRef.current
     if (!cont) return
     const r = cont.getBoundingClientRect()
     const x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10
@@ -241,7 +249,7 @@ export default function EditDefectPage() {
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#635bff', fontWeight: 600, background: 'rgba(99,91,255,.09)', padding: '5px 10px', borderRadius: 6 }}>
-                    <i className="fa-solid fa-crosshairs" /> 도면 클릭으로 위치 선택
+                    <i className="fa-solid fa-magnifying-glass-plus" /> 도면 클릭하여 확대 후 위치 지정
                   </span>
                   <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.7rem', color: '#635bff', fontWeight: 600, padding: '4px 10px', border: '1.5px solid #635bff', borderRadius: 6 }}>
                     <i className="fa-solid fa-upload" /> 도면 이미지 업로드
@@ -251,7 +259,7 @@ export default function EditDefectPage() {
 
                 <div
                   ref={mapContainerRef}
-                  style={{ position: 'relative', cursor: 'crosshair', border: '1px solid #e3e8ef', borderRadius: 8 }}
+                  style={{ position: 'relative', cursor: 'zoom-in', border: '1px solid #e3e8ef', borderRadius: 8 }}
                   onClick={onMapClick}
                 >
                   <div dangerouslySetInnerHTML={{ __html: floorSvg }} />
@@ -262,6 +270,9 @@ export default function EditDefectPage() {
                       </div>
                     </div>
                   )}
+                  <div style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: '50%', background: 'rgba(10,37,64,.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', pointerEvents: 'none' }}>
+                    <i className="fa-solid fa-expand" />
+                  </div>
                 </div>
 
                 {form.locationX != null && (
@@ -298,6 +309,52 @@ export default function EditDefectPage() {
           </div>
         </div>
       </div>
+
+      {floorZoomOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(10,37,64,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={e => { if (e.target === e.currentTarget) setFloorZoomOpen(false) }}
+        >
+          <div style={{ width: 'min(980px,94vw)', maxHeight: '92vh', background: '#fff', borderRadius: 14, boxShadow: '0 12px 40px rgba(10,37,64,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid #eef0f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0a2540' }}>
+                <i className="fa-solid fa-crosshairs" style={{ color: '#635bff', marginRight: 6 }} />
+                도면 클릭으로 위치 지정 — {floorPlans.find(f => f.id === form.floorPlanId)?.name ?? ''}
+              </div>
+              <button
+                onClick={() => setFloorZoomOpen(false)}
+                style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #e3e8ef', background: '#fff', cursor: 'pointer', color: '#697386', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div style={{ padding: 18, overflow: 'auto' }}>
+              <div
+                ref={modalMapContainerRef}
+                style={{ position: 'relative', cursor: 'crosshair', border: '1px solid #e3e8ef', borderRadius: 8 }}
+                onClick={onModalMapClick}
+              >
+                <div dangerouslySetInnerHTML={{ __html: floorSvg }} />
+                {form.locationX != null && (
+                  <div style={{ position: 'absolute', left: `${form.locationX}%`, top: `${form.locationY ?? 0}%`, transform: 'translate(-50%,-50%)', pointerEvents: 'none', zIndex: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2.5px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(0,0,0,.25)', background: '#635bff', color: '#fff', fontSize: 13 }}>
+                      <i className="fa-solid fa-location-dot" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ padding: '10px 18px', borderTop: '1px solid #eef0f4', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}>
+              <button
+                onClick={() => setFloorZoomOpen(false)}
+                style={{ padding: '7px 18px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: 'none', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}
+              >
+                완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

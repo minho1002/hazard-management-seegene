@@ -409,6 +409,19 @@ export function useStore() {
     return category.id
   }, [])
 
+  // 외주업체는 고정 목록 대신 수기 입력을 받는다 — 같은 이름이 이미 있으면 재사용하고, 없으면 새로 만든다.
+  const addVendor = useCallback((name: string): number => {
+    const trimmed = name.trim()
+    const current = loadState()
+    const existing = current.vendors.find(v => v.name === trimmed)
+    if (existing) return existing.id
+    const vendor: Vendor = { id: nextId(current.vendors), name: trimmed, specialty: '' }
+    const next = { ...current, vendors: [...current.vendors, vendor] }
+    persistState(next)
+    setState(next)
+    return vendor.id
+  }, [])
+
   const addDefect = useCallback((data: Omit<Defect, 'id' | 'caseNumber' | 'recurrenceCount' | 'totalCost' | 'createdAt'>) => {
     setState(prev => {
       const defect: Defect = {
@@ -774,6 +787,7 @@ export function useStore() {
   return {
     state,
     addCategory,
+    addVendor,
     addDefect,
     addDefectAndGetId,
     updateDefect,
