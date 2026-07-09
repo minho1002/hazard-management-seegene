@@ -6,11 +6,11 @@ import { isOverdue, OVERDUE_DAYS_BY_SEVERITY, type SeverityKey } from '@/lib/des
 
 export type CalendarEventType = 'occurred' | 'vendorVisit' | 'paymentDone' | 'overdue'
 
-const EVENT_META: Record<CalendarEventType, { icon: string; color: string; label: string }> = {
-  occurred: { icon: '🔴', color: '#DC2626', label: '하자 발생일' },
-  vendorVisit: { icon: '🚚', color: '#2563EB', label: '업체 방문 예정일' },
-  paymentDone: { icon: '💰', color: '#16A34A', label: '결제 완료일' },
-  overdue: { icon: '⚠️', color: '#F97316', label: '조치 지연일' },
+const EVENT_META: Record<CalendarEventType, { icon: string; color: string; bg: string; label: string; priority: number }> = {
+  overdue:     { icon: '⚠️', color: '#C2410C', bg: '#FFEDD5', label: '조치 지연일',     priority: 0 },
+  occurred:    { icon: '🔴', color: '#B91C1C', bg: '#FEE2E2', label: '하자 발생일',     priority: 1 },
+  vendorVisit: { icon: '🏢', color: '#1D4ED8', bg: '#DBEAFE', label: '업체 방문 예정일', priority: 2 },
+  paymentDone: { icon: '💰', color: '#15803D', bg: '#DCFCE7', label: '결제 완료일',     priority: 3 },
 }
 
 interface DayEvent { type: CalendarEventType; defect: Defect }
@@ -26,6 +26,9 @@ function overdueSinceDate(d: Defect): string | null {
   dt.setDate(dt.getDate() + threshold)
   return toDateStr(dt)
 }
+
+// 셀 안에는 최대 2건까지 칩으로 보여주고, 나머지는 "+N건"으로 요약한다 (최대 2~3줄).
+const MAX_VISIBLE_EVENTS = 2
 
 interface Props {
   defects: Defect[]
@@ -50,6 +53,7 @@ export default function DefectCalendar({ defects, selectedDate, onSelectDate }: 
       push(d.paymentCompletedAt, 'paymentDone', d)
       if (isOverdue(d)) push(overdueSinceDate(d), 'overdue', d)
     })
+    Object.values(map).forEach(events => events.sort((a, b) => EVENT_META[a.type].priority - EVENT_META[b.type].priority))
     return map
   }, [defects])
 
@@ -80,17 +84,18 @@ export default function DefectCalendar({ defects, selectedDate, onSelectDate }: 
         ><i className="fa-solid fa-chevron-right" /></button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3, marginBottom: 4 }}>
         {['일', '월', '화', '수', '목', '금', '토'].map(w => (
           <div key={w} style={{ textAlign: 'center', fontSize: '0.62rem', color: '#b0bac6', fontWeight: 700, padding: '2px 0' }}>{w}</div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3 }}>
         {cells.map((dateStr, i) => {
-          if (!dateStr) return <div key={i} />
+          if (!dateStr) return <div key={i} style={{ minHeight: 86 }} />
           const dayEvents = eventsByDate[dateStr] ?? []
-          const types = Array.from(new Set(dayEvents.map(e => e.type)))
+          const visible = dayEvents.slice(0, MAX_VISIBLE_EVENTS)
+          const extra = dayEvents.length - visible.length
           const isToday = dateStr === todayStr
           const isSelected = dateStr === selectedDate
           const dayNum = parseInt(dateStr.slice(8, 10), 10)
@@ -99,17 +104,54 @@ export default function DefectCalendar({ defects, selectedDate, onSelectDate }: 
               key={dateStr}
               onClick={() => onSelectDate(isSelected ? null : dateStr)}
               style={{
-                aspectRatio: '1 / 1', minHeight: 30, border: isSelected ? '1.5px solid #635bff' : isToday ? '1.5px solid #b0bac6' : '1px solid #f0f4f8',
-                borderRadius: 6, background: isSelected ? 'rgba(99,91,255,.08)' : '#fff', cursor: 'pointer',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, padding: 2,
+                position: 'relative',
+                minHeight: 86,
+                border: isSelected ? '2px solid #4F46E5' : isToday ? '1.5px solid #A5B4FC' : '1px solid #eef0f4',
+                background: isSelected ? 'rgba(79,70,229,.12)' : isToday ? 'rgba(99,102,241,.06)' : '#fff',
+                borderRadius: 8,
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'stretch',
+                textAlign: 'left',
+                padding: '8px 10px',
+                boxSizing: 'border-box',
+                overflow: 'hidden',
+                fontFamily: 'inherit',
               }}
             >
-              <span style={{ fontSize: '0.68rem', fontWeight: isToday ? 800 : 500, color: isToday ? '#635bff' : '#425466' }}>{dayNum}</span>
-              {types.length > 0 && (
-                <div style={{ display: 'flex', gap: 1 }}>
-                  {types.slice(0, 4).map(t => (
-                    <span key={t} style={{ width: 4, height: 4, borderRadius: '50%', background: EVENT_META[t].color, display: 'inline-block' }} />
+              <span
+                style={{
+                  fontSize: '0.92rem',
+                  lineHeight: 1,
+                  fontWeight: isSelected || isToday ? 700 : 600,
+                  color: isSelected ? '#3730A3' : isToday ? '#4F46E5' : '#334155',
+                  marginBottom: 5,
+                }}
+              >
+                {dayNum}
+              </span>
+              {dayEvents.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                  {visible.map((e, idx) => (
+                    <span
+                      key={idx}
+                      title={`${EVENT_META[e.type].label} · ${e.defect.title}`}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.62rem', fontWeight: 600,
+                        padding: '1px 5px', borderRadius: 4, background: EVENT_META[e.type].bg, color: EVENT_META[e.type].color,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}
+                    >
+                      <span style={{ flexShrink: 0 }}>{EVENT_META[e.type].icon}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.defect.title}</span>
+                    </span>
                   ))}
+                  {extra > 0 && (
+                    <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#697386', padding: '0 5px' }}>
+                      +{extra}건
+                    </span>
+                  )}
                 </div>
               )}
             </button>
@@ -120,7 +162,7 @@ export default function DefectCalendar({ defects, selectedDate, onSelectDate }: 
       <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, marginTop: 8, paddingTop: 8, borderTop: '1px solid #f0f4f8' }}>
         {(Object.keys(EVENT_META) as CalendarEventType[]).map(t => (
           <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.62rem', color: '#697386' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: EVENT_META[t].color, display: 'inline-block' }} />
+            <span>{EVENT_META[t].icon}</span>
             {EVENT_META[t].label}
           </span>
         ))}

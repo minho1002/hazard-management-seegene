@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { useStore, type Defect } from '@/lib/store'
 import EmptyState from '@/components/ui/EmptyState'
 import DefectCalendar from '@/components/dashboard/DefectCalendar'
+import CategoryTabBar, { type CategoryTab } from '@/components/dashboard/CategoryTabBar'
 import {
-  needsTodayAction, isOverdue, isRecurring, COLORS, getFieldTab, getPaymentBadge, type FieldTab,
+  needsTodayAction, isOverdue, isRecurring, COLORS, getPaymentBadge,
 } from '@/lib/designTokens'
 import { generateActionPlanOpinion } from '@/lib/aiReportService'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -17,13 +18,8 @@ function fmtKRW(n: number) {
   return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(n)
 }
 
-const TAB_META: { key: '전체' | FieldTab; label: string; emoji: string }[] = [
-  { key: '전체', label: '전체', emoji: '' },
-  { key: '누수', label: '누수', emoji: '💧' },
-  { key: '전기', label: '전기', emoji: '⚡' },
-  { key: '배수', label: '배수', emoji: '🚽' },
-  { key: '기타', label: '기타', emoji: '' },
-]
+const ALL_TAB_KEY = '__all__'
+const UNCATEGORIZED_TAB_KEY = '__uncategorized__'
 
 function costBucket(d: Defect): '우리측' | '타업체' | '기타' {
   if (d.costHandlingType === '우리측 부담') return '우리측'
@@ -38,8 +34,9 @@ export default function DashboardPage() {
   const { state } = useStore()
   const isTablet = useMediaQuery('(max-width: 1024px)')
   const [updatedAt, setUpdatedAt] = useState('')
-  const [activeTab, setActiveTab] = useState<'전체' | FieldTab>('전체')
+  const [activeTab, setActiveTab] = useState<string>(ALL_TAB_KEY)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [openModal, setOpenModal] = useState<'ai' | 'insights' | null>(null)
   const role = useCurrentRole()
   usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
 
@@ -50,10 +47,32 @@ export default function DashboardPage() {
   const baseDefects = state.defects.filter(d => !d.deletedAt)
   const categoryNameOf = (d: Defect) => state.categories.find(c => c.id === d.categoryId)?.name ?? null
 
-  const tabCounts: Record<'전체' | FieldTab, number> = { '전체': baseDefects.length, '누수': 0, '전기': 0, '배수': 0, '기타': 0 }
-  baseDefects.forEach(d => { tabCounts[getFieldTab(categoryNameOf(d))]++ })
+  // 카테고리 탭 — 하드코딩 없이 실제 하자 데이터에서 카테고리별 건수를 집계해 동적으로 생성한다.
+  // [전체]는 항상 맨 앞 고정, 나머지는 발생 건수 내림차순(동률이면 이름 가나다순), 0건은 숨김.
+  const categoryCountMap = new Map<number, number>()
+  let uncategorizedCount = 0
+  baseDefects.forEach(d => {
+    const cat = state.categories.find(c => c.id === d.categoryId)
+    if (cat) categoryCountMap.set(cat.id, (categoryCountMap.get(cat.id) ?? 0) + 1)
+    else uncategorizedCount++
+  })
+  const dynamicCategoryTabs: CategoryTab[] = state.categories
+    .map((c): CategoryTab => ({ key: String(c.id), label: c.name, icon: c.icon, count: categoryCountMap.get(c.id) ?? 0 }))
+    .concat(uncategorizedCount > 0 ? [{ key: UNCATEGORIZED_TAB_KEY, label: '기타', icon: null, count: uncategorizedCount }] : [])
+    .filter(t => t.count > 0)
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'ko'))
+  const categoryTabs: CategoryTab[] = [
+    { key: ALL_TAB_KEY, label: '전체', icon: null, count: baseDefects.length },
+    ...dynamicCategoryTabs,
+  ]
 
-  const defects = activeTab === '전체' ? baseDefects : baseDefects.filter(d => getFieldTab(categoryNameOf(d)) === activeTab)
+  // 선택된 탭이 데이터 변경 등으로 더 이상 존재하지 않게 되면(0건이 되어 숨겨진 경우) 안전하게 [전체]로 폴백한다.
+  const effectiveActiveTab = activeTab === ALL_TAB_KEY || categoryTabs.some(t => t.key === activeTab) ? activeTab : ALL_TAB_KEY
+
+  const defects = effectiveActiveTab === ALL_TAB_KEY ? baseDefects : baseDefects.filter(d => {
+    if (effectiveActiveTab === UNCATEGORIZED_TAB_KEY) return !state.categories.some(c => c.id === d.categoryId)
+    return String(d.categoryId) === effectiveActiveTab
+  })
 
   // 카드1: 진행 중인 미완결 건수 (진행중/지연/재점검필요/조치완료요청)
   const unresolvedItems = defects.filter(d =>
@@ -167,6 +186,12 @@ export default function DashboardPage() {
     location.reload()
   }
 
+  const topBtn = (accent: string, bg: string): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999,
+    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+    border: `1.5px solid ${accent}55`, background: bg, color: accent,
+  })
+
   return (
     <div style={{ minHeight: '100vh' }}>
       {/* Header */}
@@ -176,6 +201,13 @@ export default function DashboardPage() {
           <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 1 }}>업데이트 {updatedAt}</div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button onClick={() => setOpenModal('ai')} style={topBtn('#4F46E5', 'rgba(99,91,255,.07)')}>
+            <i className="fa-solid fa-wand-magic-sparkles" /> AI 종합의견
+          </button>
+          <button onClick={() => setOpenModal('insights')} style={topBtn('#1D4ED8', 'rgba(37,99,235,.06)')}>
+            <i className="fa-solid fa-chart-line" /> 심화 분석
+          </button>
+          <span style={{ width: 1, height: 18, background: '#e3e8ef', margin: '0 2px' }} />
           <button onClick={resetStorage} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}>
             <i className="fa-solid fa-rotate" /> 초기화
           </button>
@@ -187,27 +219,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Category Tabs */}
-      <div style={{ position: 'sticky', top: 53, zIndex: 40, background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '8px 20px', display: 'flex', gap: 6, overflowX: 'auto' }}>
-        {TAB_META.map(t => {
-          const active = activeTab === t.key
-          return (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              style={{
-                flexShrink: 0, padding: '7px 16px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                border: active ? '1.5px solid #635bff' : '1.5px solid #e3e8ef',
-                background: active ? '#635bff' : '#fff', color: active ? '#fff' : '#425466',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              {t.emoji && <span>{t.emoji}</span>}
-              {t.label}
-              <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 999, background: active ? 'rgba(255,255,255,.25)' : '#f3f5f7', color: active ? '#fff' : '#697386', fontWeight: 700 }}>{tabCounts[t.key]}</span>
-            </button>
-          )
-        })}
+      {/* Category Tabs — 실데이터 기반 동적 생성, 가로 스크롤 */}
+      <div style={{ position: 'sticky', top: 53, zIndex: 40, background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '8px 20px' }}>
+        <CategoryTabBar tabs={categoryTabs} activeKey={effectiveActiveTab} onSelect={setActiveTab} />
       </div>
 
       <div style={{ padding: '16px 20px' }}>
@@ -275,54 +289,44 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* AI 종합 의견 — Action Plan */}
-        <div style={{ ...aiCard, marginBottom: 16 }}>
-          <div style={aiCardHeader}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13 }}>✨</span>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>AI 종합 의견</div>
+        {openModal === 'ai' && (
+          <DashboardModal title="✨ AI 종합 의견" subtitle="Rule-Based 분석 · Action Plan" onClose={() => setOpenModal(null)}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                {actionPlan.headline.map((line, i) => (
+                  <div key={i} style={{ fontSize: '0.78rem', color: '#0a2540', lineHeight: 1.6, marginBottom: 2 }}>• {line}</div>
+                ))}
+              </div>
+              {actionPlan.immediateActions.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: COLORS.danger, marginBottom: 3 }}>즉시 조치 필요</div>
+                  {actionPlan.immediateActions.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
+                </div>
+              )}
+              {actionPlan.costRisk.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#B06B1A', marginBottom: 3 }}>비용/결제 리스크</div>
+                  {actionPlan.costRisk.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
+                </div>
+              )}
+              {actionPlan.recurringWarning.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#635bff', marginBottom: 3 }}>반복 발생 경고</div>
+                  {actionPlan.recurringWarning.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
+                </div>
+              )}
+              {actionPlan.approvalNeeded.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#0F7850', marginBottom: 3 }}>관리자 결재 필요</div>
+                  {actionPlan.approvalNeeded.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
+                </div>
+              )}
             </div>
-          </div>
-          <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div>
-              {actionPlan.headline.map((line, i) => (
-                <div key={i} style={{ fontSize: '0.78rem', color: '#0a2540', lineHeight: 1.6, marginBottom: 2 }}>• {line}</div>
-              ))}
-            </div>
-            {actionPlan.immediateActions.length > 0 && (
-              <div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: COLORS.danger, marginBottom: 3 }}>즉시 조치 필요</div>
-                {actionPlan.immediateActions.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
-              </div>
-            )}
-            {actionPlan.costRisk.length > 0 && (
-              <div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#B06B1A', marginBottom: 3 }}>비용/결제 리스크</div>
-                {actionPlan.costRisk.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
-              </div>
-            )}
-            {actionPlan.recurringWarning.length > 0 && (
-              <div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#635bff', marginBottom: 3 }}>반복 발생 경고</div>
-                {actionPlan.recurringWarning.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
-              </div>
-            )}
-            {actionPlan.approvalNeeded.length > 0 && (
-              <div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#0F7850', marginBottom: 3 }}>관리자 결재 필요</div>
-                {actionPlan.approvalNeeded.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
-              </div>
-            )}
-          </div>
-        </div>
+          </DashboardModal>
+        )}
 
-        {/* ── AI 분석 인사이트 (심화) ──────────────────────────────────── */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 12px', background: 'linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,.03))', borderRadius: 8, border: '1px solid rgba(99,91,255,.18)' }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>📊 심화 분석</div>
-            <div style={{ fontSize: '0.65rem', color: '#697386' }}>Rule-Based · 실시간 데이터 기반</div>
-          </div>
-
+        {openModal === 'insights' && (
+          <DashboardModal title="📊 심화 분석" subtitle="Rule-Based · 실시간 데이터 기반" onClose={() => setOpenModal(null)} wide>
           <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 10 }}>
             {topCauses.length > 0 && (
               <div style={aiCard}>
@@ -492,6 +496,36 @@ export default function DashboardPage() {
               </div>
             </div>
           )}
+          </DashboardModal>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DashboardModal({
+  title, subtitle, onClose, children, wide,
+}: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(10,37,64,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ width: wide ? 'min(1100px,96vw)' : 'min(720px,94vw)', background: '#fff', borderRadius: 14, boxShadow: '0 12px 40px rgba(10,37,64,.25)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #eef0f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0a2540' }}>{title}</div>
+            {subtitle && <div style={{ fontSize: '0.65rem', color: '#697386', marginTop: 2 }}>{subtitle}</div>}
+          </div>
+          <button
+            onClick={onClose}
+            style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #e3e8ef', background: '#fff', cursor: 'pointer', color: '#697386', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          >
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+        <div style={{ padding: 16, overflowY: 'auto' }}>
+          {children}
         </div>
       </div>
     </div>
