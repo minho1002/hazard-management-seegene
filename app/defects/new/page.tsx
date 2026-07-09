@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useEffect, useMemo, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useStore } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import { findFloorZoneAt } from '@/lib/floorZones'
@@ -42,8 +42,10 @@ const RISK_COLORS: Record<string, { bg: string; text: string; border: string }> 
   긴급: { bg: '#fff1f2', text: '#be123c', border: '#fecdd3' },
 }
 
-export default function NewDefectPage() {
+function NewDefectPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const dateParam = searchParams.get('date')
   const { state, addCategory, addVendor, addDefectAndGetId, addDefectLocation, saveFloorImage, addFile } = useStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const modalMapContainerRef = useRef<HTMLDivElement>(null)
@@ -68,7 +70,7 @@ export default function NewDefectPage() {
     reporterName: '',
     vendorName: '',
     managerName: '김관리',
-    firstOccurredAt: new Date().toISOString().slice(0, 10),
+    firstOccurredAt: dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : new Date().toISOString().slice(0, 10),
     zone: '',
     roomName: '',
     facilityName: '',
@@ -1020,5 +1022,13 @@ export default function NewDefectPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function NewDefectPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, color: '#6B7280', fontSize: '.9rem' }}>로딩 중...</div>}>
+      <NewDefectPageInner />
+    </Suspense>
   )
 }

@@ -170,7 +170,15 @@ export default function DefectCalendar({ defects, selectedDate, onSelectDate }: 
 
       {selectedDate && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f0f4f8' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0a2540', marginBottom: 6 }}>{selectedDate} 일정 ({selectedEvents.length}건)</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0a2540' }}>{selectedDate} 일정 ({selectedEvents.length}건)</div>
+            <a
+              href={`/defects/new?date=${selectedDate}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', fontWeight: 700, color: '#fff', background: '#4F46E5', padding: '3px 9px', borderRadius: 6, textDecoration: 'none', flexShrink: 0 }}
+            >
+              <i className="fa-solid fa-plus" /> 이 날짜로 하자 등록
+            </a>
+          </div>
           {selectedEvents.length === 0 ? (
             <div style={{ fontSize: '0.72rem', color: '#b0bac6' }}>해당 날짜의 일정이 없습니다.</div>
           ) : (
