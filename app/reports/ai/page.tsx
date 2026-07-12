@@ -10,6 +10,9 @@ import {
   type ReportSection,
 } from '@/lib/aiReportService'
 import { COLORS } from '@/lib/designTokens'
+import { downloadReportPDF } from '@/lib/reportExportPdf'
+import { downloadReportExcel } from '@/lib/reportExportExcel'
+import { downloadReportWord } from '@/lib/reportExportWord'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -185,6 +188,8 @@ export default function AiReportPage() {
   const [selectedType, setSelectedType] = useState<ReportType | null>(null)
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<GeneratedReport | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [wordLoading, setWordLoading] = useState(false)
 
   const selectedCfg = REPORT_TYPES.find(r => r.type === selectedType)
 
@@ -206,8 +211,55 @@ export default function AiReportPage() {
     }
   }
 
+  async function handleDownloadPDF() {
+    if (!report) return
+    setPdfLoading(true)
+    try {
+      await downloadReportPDF(report)
+    } catch (err) {
+      console.error(err)
+      alert('PDF 생성 중 오류가 발생했습니다.')
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
+  function handleDownloadExcel() {
+    if (!report) return
+    try {
+      downloadReportExcel(report)
+    } catch (err) {
+      console.error(err)
+      alert('Excel 생성 중 오류가 발생했습니다.')
+    }
+  }
+
+  async function handleDownloadWord() {
+    if (!report) return
+    setWordLoading(true)
+    try {
+      await downloadReportWord(report)
+    } catch (err) {
+      console.error(err)
+      alert('Word 생성 중 오류가 발생했습니다.')
+    } finally {
+      setWordLoading(false)
+    }
+  }
+
+  function handlePrint() {
+    window.print()
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+      <style>{`
+        @media print {
+          .app-sidenav, .app-rolebanner, .no-print { display: none !important; }
+          body { background: #fff !important; }
+          .rpt-print-area { padding: 0 !important; max-width: none !important; margin: 0 !important; }
+        }
+      `}</style>
 
       {/* ── Sticky header ── */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
@@ -232,7 +284,7 @@ export default function AiReportPage() {
       <div style={{ padding: '28px 32px', maxWidth: 1000, margin: '0 auto' }}>
 
         {/* ── Report type selection ── */}
-        <div style={{ marginBottom: 22 }}>
+        <div className="no-print" style={{ marginBottom: 22 }}>
           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#425466', marginBottom: 11 }}>보고서 유형 선택</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
             {REPORT_TYPES.map(rt => {
@@ -274,7 +326,7 @@ export default function AiReportPage() {
         </div>
 
         {/* ── Generate button ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
           <button
             onClick={handleGenerate}
             disabled={!selectedType || loading}
@@ -305,7 +357,7 @@ export default function AiReportPage() {
 
         {/* ── Loading state ── */}
         {loading && (
-          <div style={{ background: '#fff', borderRadius: 14, border: '1px solid rgba(99,91,255,.2)', padding: '36px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+          <div className="no-print" style={{ background: '#fff', borderRadius: 14, border: '1px solid rgba(99,91,255,.2)', padding: '36px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(99,91,255,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
               <i className="fa-solid fa-wand-magic-sparkles fa-beat" style={{ color: '#635bff', fontSize: 20 }} />
             </div>
@@ -316,7 +368,7 @@ export default function AiReportPage() {
 
         {/* ── Report preview ── */}
         {report && !loading && (
-          <div>
+          <div className="rpt-print-area">
 
             {/* Report header card */}
             <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e3e8ef', padding: '20px 24px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
@@ -340,23 +392,42 @@ export default function AiReportPage() {
                 </div>
               </div>
 
-              {/* Download stubs */}
-              <div style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
-                {[
-                  { icon: 'fa-solid fa-file-pdf',   label: 'PDF',  color: '#e11d48' },
-                  { icon: 'fa-solid fa-file-excel', label: 'Excel', color: '#059669' },
-                  { icon: 'fa-solid fa-file-word',  label: 'Word', color: '#2563eb' },
-                ].map(btn => (
-                  <button
-                    key={btn.label}
-                    onClick={() => alert(`${btn.label} 다운로드는 추후 지원 예정입니다.`)}
-                    title={`${btn.label} 다운로드 (준비 중)`}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: 'pointer', fontSize: '0.71rem', color: '#697386' }}
-                  >
-                    <i className={btn.icon} style={{ color: btn.color, fontSize: 13 }} />
-                    {btn.label}
-                  </button>
-                ))}
+              {/* Download & print actions */}
+              <div className="no-print" style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
+                <button
+                  onClick={handleDownloadPDF}
+                  disabled={pdfLoading}
+                  title="PDF 다운로드"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: pdfLoading ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: pdfLoading ? 0.6 : 1 }}
+                >
+                  <i className={pdfLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-pdf'} style={{ color: '#e11d48', fontSize: 13 }} />
+                  PDF
+                </button>
+                <button
+                  onClick={handleDownloadExcel}
+                  title="Excel 다운로드"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: 'pointer', fontSize: '0.71rem', color: '#425466' }}
+                >
+                  <i className="fa-solid fa-file-excel" style={{ color: '#059669', fontSize: 13 }} />
+                  Excel
+                </button>
+                <button
+                  onClick={handleDownloadWord}
+                  disabled={wordLoading}
+                  title="Word 다운로드"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: wordLoading ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: wordLoading ? 0.6 : 1 }}
+                >
+                  <i className={wordLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-word'} style={{ color: '#2563eb', fontSize: 13 }} />
+                  Word
+                </button>
+                <button
+                  onClick={handlePrint}
+                  title="인쇄"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: 'pointer', fontSize: '0.71rem', color: '#425466' }}
+                >
+                  <i className="fa-solid fa-print" style={{ color: '#0d1f35', fontSize: 13 }} />
+                  인쇄
+                </button>
               </div>
             </div>
 
