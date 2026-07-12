@@ -3,6 +3,15 @@ import { isOverdue, isRecurring, needsTodayAction, getPaymentBadge } from '@/lib
 
 export type ReportType = 'field-analysis' | 'budget-settlement' | 'executive-ppt' | 'recurring-defects' | 'cost-bearer' | 'defect-classification'
 
+export type ReportPeriodType = '전체' | '연도별' | '월별' | '일별' | '사용자 지정'
+
+export interface ReportPeriod {
+  type: ReportPeriodType
+  from: string | null
+  to: string | null
+  label: string
+}
+
 // ── Section types ──────────────────────────────────────────────────────────
 
 export interface KpiItem { label: string; value: string; sub?: string; color?: string }
@@ -31,6 +40,9 @@ export interface GeneratedReport {
   title: string
   subtitle: string
   period: string
+  periodType: ReportPeriodType
+  aggBasis: string
+  periodFilenameSuffix: string
   generatedAt: string
   sections: ReportSection[]
   actionPlan: ActionPlanOpinion
@@ -45,6 +57,7 @@ export interface ReportInput {
   vendors: Vendor[]
   files: DefectFile[]
   floorPlans: FloorPlan[]
+  period: ReportPeriod
 }
 
 // ── Helper ─────────────────────────────────────────────────────────────────
@@ -54,6 +67,44 @@ function fmtMan(v: number): string {
   if (v >= 10_000) return `${Math.round(v / 10_000)}만원`
   if (v > 0) return `${v.toLocaleString()}원`
   return '-'
+}
+
+function dateFieldFor(type: ReportType): (d: Defect) => string | null {
+  if (type === 'budget-settlement' || type === 'cost-bearer') {
+    return d => d.paymentCompletedAt ?? d.firstOccurredAt
+  }
+  return d => d.firstOccurredAt
+}
+
+function inPeriod(dateStr: string | null, period: ReportPeriod): boolean {
+  if (!period.from && !period.to) return true
+  if (!dateStr) return false
+  const d = dateStr.slice(0, 10)
+  if (period.from && d < period.from) return false
+  if (period.to && d > period.to) return false
+  return true
+}
+
+function filterDefectsForReport(type: ReportType, input: ReportInput): Defect[] {
+  const dateOf = dateFieldFor(type)
+  return input.defects.filter(d => inPeriod(dateOf(d), input.period))
+}
+
+function periodFilenameSuffix(period: ReportPeriod): string {
+  if (period.type === '전체') return '전체기간'
+  if (period.type === '연도별') return `${(period.from ?? '').slice(0, 4)}년`
+  if (period.type === '월별') return `${(period.from ?? '').slice(0, 4)}년_${(period.from ?? '').slice(5, 7)}월`
+  if (period.type === '일별') return period.from ?? '전체기간'
+  return `${period.from ?? ''}_${period.to ?? ''}`
+}
+
+const AGG_BASIS_LABEL: Record<ReportType, string> = {
+  'field-analysis':        '하자 발생일',
+  'budget-settlement':     '결제 완료일 (없으면 하자 발생일)',
+  'executive-ppt':         '하자 발생일',
+  'recurring-defects':     '하자 발생일',
+  'cost-bearer':           '결제 완료일 (없으면 하자 발생일)',
+  'defect-classification': '하자 발생일',
 }
 
 // ── Action-Plan 종합의견 (대시보드 / 집계현황 공용) ─────────────────────────
@@ -69,7 +120,8 @@ export interface ActionPlanOpinion {
   approvalNeeded: string[]    // 관리자 결재/보고 필요 항목
 }
 
-export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[], floorPlans: FloorPlan[]): ActionPlanOpinion {
+export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[], floorPlans: FloorPlan[], periodLabel?: string): ActionPlanOpinion {
+  const prefix = periodLabel ? `${periodLabel} 기준` : '오늘'
   const open = defects.filter(d => d.status !== 'completed')
   const overdue = open.filter(isOverdue)
   const todayItems = open.filter(needsTodayAction)
@@ -96,9 +148,9 @@ export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[]
 
   const headline: string[] = []
   if (todayItems.length > 0) {
-    headline.push(`오늘 우선처리 대상은 ${overdue.length > 0 ? `지연 ${overdue.length}건` : ''}${overdue.length > 0 && unresolvedCost.length > 0 ? ', ' : ''}${unresolvedCost.length > 0 ? `비용부담 미정 ${unresolvedCost.length}건` : ''}${overdue.length === 0 && unresolvedCost.length === 0 ? `${todayItems.length}건` : ''}이며, 우선순위대로 처리하지 않으면 지연이 누적됩니다.`)
+    headline.push(`${prefix} 우선처리 대상은 ${overdue.length > 0 ? `지연 ${overdue.length}건` : ''}${overdue.length > 0 && unresolvedCost.length > 0 ? ', ' : ''}${unresolvedCost.length > 0 ? `비용부담 미정 ${unresolvedCost.length}건` : ''}${overdue.length === 0 && unresolvedCost.length === 0 ? `${todayItems.length}건` : ''}이며, 우선순위대로 처리하지 않으면 지연이 누적됩니다.`)
   } else {
-    headline.push('오늘 시급하게 처리할 미완결 건은 없습니다.')
+    headline.push(`${prefix} 시급하게 처리할 미완결 건은 없습니다.`)
   }
   if (riskZones.length > 0) {
     const [zoneName, zoneInfo] = riskZones[0]
@@ -463,29 +515,34 @@ function mockGenerate(type: ReportType, input: ReportInput): GeneratedReport {
     'defect-classification':  ['하자사항/일반사항 구분 보고서', '귀책 구분 및 관리자 검토 필요 항목'],
   }
   const [title, subtitle] = TITLES[type]
-  const actionPlan = generateActionPlanOpinion(opinionScopeFor(type, input.defects), input.files, input.floorPlans)
+  const scopedDefects = filterDefectsForReport(type, input)
+  const scopedInput: ReportInput = { ...input, defects: scopedDefects }
+  const actionPlan = generateActionPlanOpinion(opinionScopeFor(type, scopedDefects), input.files, input.floorPlans, input.period.label)
   const sections =
-    type === 'field-analysis'        ? buildFieldAnalysisSections(input) :
-    type === 'budget-settlement'     ? buildBudgetSections(input) :
-    type === 'recurring-defects'     ? buildRecurringSections(input) :
-    type === 'cost-bearer'           ? buildCostBearerSections(input) :
-    type === 'defect-classification' ? buildClassificationSections(input) :
-    buildExecutiveSections(input)
+    type === 'field-analysis'        ? buildFieldAnalysisSections(scopedInput) :
+    type === 'budget-settlement'     ? buildBudgetSections(scopedInput) :
+    type === 'recurring-defects'     ? buildRecurringSections(scopedInput) :
+    type === 'cost-bearer'           ? buildCostBearerSections(scopedInput) :
+    type === 'defect-classification' ? buildClassificationSections(scopedInput) :
+    buildExecutiveSections(scopedInput)
 
   return {
     reportType: type, title, subtitle,
-    period: `${now.getFullYear()}년 ${now.getMonth() + 1}월 기준`,
+    period: input.period.label,
+    periodType: input.period.type,
+    aggBasis: AGG_BASIS_LABEL[type],
+    periodFilenameSuffix: periodFilenameSuffix(input.period),
     generatedAt: now.toLocaleString('ko-KR'),
     sections,
     actionPlan,
     basedOn: 'rule-based',
     preparedBy: '시설관리팀',
     metadata: {
-      totalDefects: input.defects.length,
-      completionRate: input.defects.length > 0
-        ? Math.round(input.defects.filter(d => d.status === 'completed').length / input.defects.length * 100)
+      totalDefects: scopedDefects.length,
+      completionRate: scopedDefects.length > 0
+        ? Math.round(scopedDefects.filter(d => d.status === 'completed').length / scopedDefects.length * 100)
         : 0,
-      totalCost: input.defects.reduce((s, d) => s + d.totalCost, 0),
+      totalCost: scopedDefects.reduce((s, d) => s + d.totalCost, 0),
     },
   }
 }
