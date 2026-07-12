@@ -262,7 +262,7 @@ export default function AiReportPage() {
       `}</style>
 
       {/* ── Sticky header ── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
+      <div className="no-print" style={{ background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Link href="/reports" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.73rem', color: '#697386', textDecoration: 'none' }}>
             <i className="fa-solid fa-arrow-left" style={{ fontSize: 10 }} />보고서
