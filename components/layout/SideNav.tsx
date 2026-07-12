@@ -77,7 +77,7 @@ export default function SideNav() {
         <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 19 }} />
       )}
       <aside
-        className="flex flex-col flex-shrink-0 sticky top-0 z-10"
+        className="app-sidenav flex flex-col flex-shrink-0 sticky top-0 z-10"
         style={{
           width: 216, minHeight: '100vh', background: '#0d1f35',
           position: isMobile ? 'fixed' : 'sticky',

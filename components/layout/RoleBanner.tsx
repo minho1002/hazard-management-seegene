@@ -8,6 +8,7 @@ export default function RoleBanner() {
 
   return (
     <div
+      className="app-rolebanner"
       style={{
         padding: '5px 24px', background: '#eef1ff', borderBottom: '1px solid #dde1fb',
         fontSize: '0.68rem', color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 6,
