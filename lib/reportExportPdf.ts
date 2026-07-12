@@ -14,6 +14,9 @@ export const A4_HEIGHT_PX = 1123 // 297mm @ 96dpi
  * 반환값: 각 페이지의 종료 y좌표 오름차순 배열. 마지막 원소는 항상 canvasHeight.
  */
 export function computePageBreaks(atomicTops: number[], canvasHeight: number, pageHeightPx: number): number[] {
+  if (canvasHeight <= 1) return [canvasHeight]
+  // Non-positive page height would keep hardLimit === sliceStart forever (infinite loop); treat it as one page.
+  if (pageHeightPx <= 0) pageHeightPx = canvasHeight
   const sortedTops = [...atomicTops].sort((a, b) => a - b)
   const breaks: number[] = []
   let sliceStart = 0
@@ -23,7 +26,7 @@ export function computePageBreaks(atomicTops: number[], canvasHeight: number, pa
       breaks.push(canvasHeight)
       break
     }
-    const candidates = sortedTops.filter(t => t > sliceStart + 1 && t <= hardLimit)
+    const candidates = sortedTops.filter(t => t > sliceStart && t <= hardLimit)
     const sliceEnd = candidates.length > 0 ? candidates[candidates.length - 1] : hardLimit
     breaks.push(sliceEnd)
     sliceStart = sliceEnd
