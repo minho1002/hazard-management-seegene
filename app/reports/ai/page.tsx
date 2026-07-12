@@ -8,6 +8,8 @@ import {
   type GeneratedReport,
   type ReportType,
   type ReportSection,
+  type ReportPeriod,
+  type ReportPeriodType,
 } from '@/lib/aiReportService'
 import { COLORS } from '@/lib/designTokens'
 import { downloadReportPDF } from '@/lib/reportExportPdf'
@@ -191,10 +193,65 @@ export default function AiReportPage() {
   const [pdfLoading, setPdfLoading] = useState(false)
   const [wordLoading, setWordLoading] = useState(false)
 
+  const now = new Date()
+  const [periodType, setPeriodType] = useState<ReportPeriodType>('월별')
+  const [periodYear, setPeriodYear] = useState(now.getFullYear())
+  const [periodMonth, setPeriodMonth] = useState(now.getMonth() + 1)
+  const [periodDate, setPeriodDate] = useState(now.toISOString().slice(0, 10))
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [reportPeriodKey, setReportPeriodKey] = useState<string | null>(null)
+
+  function pad2(n: number) { return String(n).padStart(2, '0') }
+  function daysInMonth(y: number, m: number) { return new Date(y, m, 0).getDate() }
+
+  function computePeriod(): ReportPeriod {
+    if (periodType === '전체') return { type: '전체', from: null, to: null, label: '전체 기간' }
+    if (periodType === '연도별') return { type: '연도별', from: `${periodYear}-01-01`, to: `${periodYear}-12-31`, label: `${periodYear}년` }
+    if (periodType === '월별') {
+      const from = `${periodYear}-${pad2(periodMonth)}-01`
+      const to = `${periodYear}-${pad2(periodMonth)}-${pad2(daysInMonth(periodYear, periodMonth))}`
+      return { type: '월별', from, to, label: `${periodYear}년 ${periodMonth}월` }
+    }
+    if (periodType === '일별') return { type: '일별', from: periodDate, to: periodDate, label: periodDate }
+    return {
+      type: '사용자 지정',
+      from: customFrom || null,
+      to: customTo || null,
+      label: customFrom && customTo ? `${customFrom} ~ ${customTo}` : '',
+    }
+  }
+
+  const period = computePeriod()
+  const periodKeyNow = JSON.stringify({ type: period.type, from: period.from, to: period.to })
+  const isPeriodValid =
+    periodType === '전체' ? true :
+    periodType === '연도별' ? !!periodYear :
+    periodType === '월별' ? !!periodYear && !!periodMonth :
+    periodType === '일별' ? !!periodDate :
+    !!customFrom && !!customTo && customFrom <= customTo
+  const periodStale = report !== null && reportPeriodKey !== null && reportPeriodKey !== periodKeyNow
+
+  function applyThisMonth() { setPeriodType('월별'); setPeriodYear(now.getFullYear()); setPeriodMonth(now.getMonth() + 1) }
+  function applyLastMonth() {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    setPeriodType('월별'); setPeriodYear(d.getFullYear()); setPeriodMonth(d.getMonth() + 1)
+  }
+  function applyThisYear() { setPeriodType('연도별'); setPeriodYear(now.getFullYear()) }
+  function applyLast30Days() {
+    const from = new Date(now); from.setDate(from.getDate() - 30)
+    setPeriodType('사용자 지정'); setCustomFrom(from.toISOString().slice(0, 10)); setCustomTo(now.toISOString().slice(0, 10))
+  }
+
+  const selectStyle: React.CSSProperties = { padding: '7px 10px', borderRadius: 7, border: '1px solid #e3e8ef', outline: 'none', fontSize: '0.8rem', fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }
+  const inputStyle: React.CSSProperties = { padding: '7px 10px', borderRadius: 7, border: '1px solid #e3e8ef', outline: 'none', fontSize: '0.8rem', fontFamily: 'inherit' }
+
+  const isEmptyReport = report ? report.metadata.totalDefects === 0 : false
+
   const selectedCfg = REPORT_TYPES.find(r => r.type === selectedType)
 
   async function handleGenerate() {
-    if (!selectedType) return
+    if (!selectedType || !isPeriodValid) return
     setLoading(true)
     setReport(null)
     try {
@@ -204,8 +261,10 @@ export default function AiReportPage() {
         vendors: state.vendors,
         files: state.files,
         floorPlans: state.floorPlans,
+        period,
       })
       setReport(result)
+      setReportPeriodKey(periodKeyNow)
     } finally {
       setLoading(false)
     }
@@ -283,6 +342,82 @@ export default function AiReportPage() {
 
       <div style={{ padding: '28px 32px', maxWidth: 1000, margin: '0 auto' }}>
 
+        {/* ── Period settings ── */}
+        <div className="no-print" style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#425466', marginBottom: 11 }}>보고기간 설정</div>
+          <div style={{ background: '#fff', border: '1px solid #e3e8ef', borderRadius: 14, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+              {(['전체', '연도별', '월별', '일별', '사용자 지정'] as ReportPeriodType[]).map(pt => (
+                <button
+                  key={pt}
+                  onClick={() => setPeriodType(pt)}
+                  style={{
+                    padding: '7px 16px', borderRadius: 999, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                    border: periodType === pt ? '1.5px solid #635bff' : '1.5px solid #e3e8ef',
+                    background: periodType === pt ? '#635bff' : '#fff',
+                    color: periodType === pt ? '#fff' : '#425466',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {pt}
+                </button>
+              ))}
+            </div>
+
+            {periodType === '연도별' && (
+              <select value={periodYear} onChange={e => setPeriodYear(Number(e.target.value))} style={selectStyle}>
+                {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2, now.getFullYear() - 3].map(y => (
+                  <option key={y} value={y}>{y}년</option>
+                ))}
+              </select>
+            )}
+
+            {periodType === '월별' && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select value={periodYear} onChange={e => setPeriodYear(Number(e.target.value))} style={selectStyle}>
+                  {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2, now.getFullYear() - 3].map(y => (
+                    <option key={y} value={y}>{y}년</option>
+                  ))}
+                </select>
+                <select value={periodMonth} onChange={e => setPeriodMonth(Number(e.target.value))} style={selectStyle}>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                    <option key={m} value={m}>{m}월</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {periodType === '일별' && (
+              <input type="date" value={periodDate} onChange={e => setPeriodDate(e.target.value)} style={inputStyle} />
+            )}
+
+            {periodType === '사용자 지정' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={inputStyle} />
+                <span style={{ color: '#b0bac6' }}>~</span>
+                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={inputStyle} />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              {[
+                { label: '이번 달', fn: applyThisMonth },
+                { label: '지난 달', fn: applyLastMonth },
+                { label: '올해', fn: applyThisYear },
+                { label: '최근 30일', fn: applyLast30Days },
+              ].map(q => (
+                <button
+                  key={q.label}
+                  onClick={q.fn}
+                  style={{ padding: '5px 12px', borderRadius: 8, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', border: '1px solid #e3e8ef', background: '#f8fafc', color: '#697386', fontFamily: 'inherit' }}
+                >
+                  {q.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* ── Report type selection ── */}
         <div className="no-print" style={{ marginBottom: 22 }}>
           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#425466', marginBottom: 11 }}>보고서 유형 선택</div>
@@ -329,28 +464,34 @@ export default function AiReportPage() {
         <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
           <button
             onClick={handleGenerate}
-            disabled={!selectedType || loading}
+            disabled={!selectedType || !isPeriodValid || loading}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '11px 26px',
-              background: selectedType && !loading ? (selectedCfg?.color ?? '#635bff') : '#e3e8ef',
-              color: selectedType && !loading ? '#fff' : '#aab',
+              background: selectedType && isPeriodValid && !loading ? (selectedCfg?.color ?? '#635bff') : '#e3e8ef',
+              color: selectedType && isPeriodValid && !loading ? '#fff' : '#aab',
               border: 'none', borderRadius: 10,
               fontSize: '0.82rem', fontWeight: 700,
-              cursor: selectedType && !loading ? 'pointer' : 'not-allowed',
+              cursor: selectedType && isPeriodValid && !loading ? 'pointer' : 'not-allowed',
               transition: 'all 0.15s',
             }}
           >
             <i className={`fa-solid ${loading ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`} style={{ fontSize: 13 }} />
             {loading ? '보고서 생성 중...' : '보고서 생성하기'}
           </button>
-          {!selectedType && !loading && (
-            <span style={{ fontSize: '0.72rem', color: '#aab' }}>보고서 유형을 먼저 선택하세요</span>
+          {(!selectedType || !isPeriodValid) && !loading && (
+            <span style={{ fontSize: '0.72rem', color: '#aab' }}>보고기간과 보고서 유형을 선택해 주세요.</span>
           )}
-          {report && !loading && (
+          {report && !loading && !periodStale && (
             <span style={{ fontSize: '0.72rem', color: '#059669' }}>
               <i className="fa-solid fa-circle-check" style={{ marginRight: 5 }} />
               생성 완료 — {report.generatedAt}
+            </span>
+          )}
+          {periodStale && !loading && (
+            <span style={{ fontSize: '0.72rem', color: '#d97706', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <i className="fa-solid fa-triangle-exclamation" />
+              기간이 변경되었습니다 — 보고서를 다시 생성해주세요.
             </span>
           )}
         </div>
@@ -383,9 +524,12 @@ export default function AiReportPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>{report.period}</span>
+                  <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>
+                    {report.periodType === '일별' ? '기준일' : '기준기간'}: {report.period}
+                  </span>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>생성: {report.generatedAt}</span>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>작성자: {report.preparedBy}</span>
+                  <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: 'rgba(5,150,105,.1)', borderRadius: 99, color: '#059669', fontWeight: 600 }}>집계 기준: {report.aggBasis}</span>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: 'rgba(99,91,255,.1)', borderRadius: 99, color: '#635bff', fontWeight: 600 }}>
                     ✨ {report.basedOn === 'rule-based' ? 'Rule-Based AI' : 'LLM 분석'}
                   </span>
@@ -396,26 +540,27 @@ export default function AiReportPage() {
               <div className="no-print" style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
                 <button
                   onClick={handleDownloadPDF}
-                  disabled={pdfLoading}
-                  title="PDF 다운로드"
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: pdfLoading ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: pdfLoading ? 0.6 : 1 }}
+                  disabled={pdfLoading || isEmptyReport}
+                  title={isEmptyReport ? '데이터가 없어 다운로드할 파일이 없습니다.' : 'PDF 다운로드'}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: (pdfLoading || isEmptyReport) ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: (pdfLoading || isEmptyReport) ? 0.6 : 1 }}
                 >
                   <i className={pdfLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-pdf'} style={{ color: '#e11d48', fontSize: 13 }} />
                   PDF
                 </button>
                 <button
                   onClick={handleDownloadExcel}
-                  title="Excel 다운로드"
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: 'pointer', fontSize: '0.71rem', color: '#425466' }}
+                  disabled={isEmptyReport}
+                  title={isEmptyReport ? '데이터가 없어 다운로드할 파일이 없습니다.' : 'Excel 다운로드'}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: isEmptyReport ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: isEmptyReport ? 0.6 : 1 }}
                 >
                   <i className="fa-solid fa-file-excel" style={{ color: '#059669', fontSize: 13 }} />
                   Excel
                 </button>
                 <button
                   onClick={handleDownloadWord}
-                  disabled={wordLoading}
-                  title="Word 다운로드"
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: wordLoading ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: wordLoading ? 0.6 : 1 }}
+                  disabled={wordLoading || isEmptyReport}
+                  title={isEmptyReport ? '데이터가 없어 다운로드할 파일이 없습니다.' : 'Word 다운로드'}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: (wordLoading || isEmptyReport) ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: (wordLoading || isEmptyReport) ? 0.6 : 1 }}
                 >
                   <i className={wordLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-word'} style={{ color: '#2563eb', fontSize: 13 }} />
                   Word
@@ -431,67 +576,76 @@ export default function AiReportPage() {
               </div>
             </div>
 
-            {/* Content sections */}
-            {report.sections.map(section => (
-              <div key={section.id} style={{ background: '#fff', borderRadius: 14, border: '1px solid #e3e8ef', padding: '18px 24px', marginBottom: 14 }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f0f4f8' }}>
-                  {section.title}
-                </div>
-                <SectionRenderer section={section} />
+            {isEmptyReport ? (
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e3e8ef', padding: '40px 24px', textAlign: 'center', color: '#697386', fontSize: '0.85rem' }}>
+                <i className="fa-solid fa-inbox" style={{ fontSize: 28, color: '#d0d5dd', marginBottom: 10, display: 'block' }} />
+                선택한 기간에 해당하는 하자 데이터가 없습니다.
               </div>
-            ))}
+            ) : (
+              <>
+                {/* Content sections */}
+                {report.sections.map(section => (
+                  <div key={section.id} style={{ background: '#fff', borderRadius: 14, border: '1px solid #e3e8ef', padding: '18px 24px', marginBottom: 14 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f0f4f8' }}>
+                      {section.title}
+                    </div>
+                    <SectionRenderer section={section} />
+                  </div>
+                ))}
 
-            {/* AI 종합 의견 */}
-            <div style={{ background: 'linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,.03))', borderRadius: 14, border: '1px solid rgba(99,91,255,.2)', padding: '20px 24px', marginBottom: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
-                <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#635bff,#8b85ff)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#fff', fontSize: 12 }} />
+                {/* AI 종합 의견 */}
+                <div style={{ background: 'linear-gradient(135deg,rgba(99,91,255,.08),rgba(99,91,255,.03))', borderRadius: 14, border: '1px solid rgba(99,91,255,.2)', padding: '20px 24px', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#635bff,#8b85ff)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <i className="fa-solid fa-wand-magic-sparkles" style={{ color: '#fff', fontSize: 12 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>AI 종합 의견</div>
+                      <div style={{ fontSize: '0.66rem', color: '#697386', marginTop: 1 }}>Rule-Based 분석 · LLM API 연동 시 더욱 정교한 분석 제공 가능</div>
+                    </div>
+                  </div>
+                  <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,.75)', borderRadius: 10, border: '1px solid rgba(99,91,255,.12)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      {report.actionPlan.headline.map((line, i) => (
+                        <div key={i} style={{ fontSize: '0.82rem', color: '#0a2540', lineHeight: 1.7, marginBottom: 2 }}>• {line}</div>
+                      ))}
+                    </div>
+                    {report.actionPlan.immediateActions.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: COLORS.danger, marginBottom: 4 }}>즉시 조치 필요</div>
+                        {report.actionPlan.immediateActions.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
+                      </div>
+                    )}
+                    {report.actionPlan.costRisk.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#B06B1A', marginBottom: 4 }}>비용 / 결제 리스크</div>
+                        {report.actionPlan.costRisk.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
+                      </div>
+                    )}
+                    {report.actionPlan.recurringWarning.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#635bff', marginBottom: 4 }}>반복 발생 경고</div>
+                        {report.actionPlan.recurringWarning.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
+                      </div>
+                    )}
+                    {report.actionPlan.approvalNeeded.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#0F7850', marginBottom: 4 }}>관리자 결재 필요</div>
+                        {report.actionPlan.approvalNeeded.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0a2540' }}>AI 종합 의견</div>
-                  <div style={{ fontSize: '0.66rem', color: '#697386', marginTop: 1 }}>Rule-Based 분석 · LLM API 연동 시 더욱 정교한 분석 제공 가능</div>
-                </div>
-              </div>
-              <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,.75)', borderRadius: 10, border: '1px solid rgba(99,91,255,.12)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div>
-                  {report.actionPlan.headline.map((line, i) => (
-                    <div key={i} style={{ fontSize: '0.82rem', color: '#0a2540', lineHeight: 1.7, marginBottom: 2 }}>• {line}</div>
-                  ))}
-                </div>
-                {report.actionPlan.immediateActions.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: COLORS.danger, marginBottom: 4 }}>즉시 조치 필요</div>
-                    {report.actionPlan.immediateActions.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
-                  </div>
-                )}
-                {report.actionPlan.costRisk.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#B06B1A', marginBottom: 4 }}>비용 / 결제 리스크</div>
-                    {report.actionPlan.costRisk.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
-                  </div>
-                )}
-                {report.actionPlan.recurringWarning.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#635bff', marginBottom: 4 }}>반복 발생 경고</div>
-                    {report.actionPlan.recurringWarning.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
-                  </div>
-                )}
-                {report.actionPlan.approvalNeeded.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#0F7850', marginBottom: 4 }}>관리자 결재 필요</div>
-                    {report.actionPlan.approvalNeeded.map((t, i) => <div key={i} style={{ fontSize: '0.76rem', color: '#425466', lineHeight: 1.65 }}>· {t}</div>)}
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* Metadata footer */}
-            <div style={{ padding: '10px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e3e8ef', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.67rem', color: '#697386' }}>분석 대상: <strong style={{ color: '#425466' }}>{report.metadata.totalDefects}건</strong></span>
-              <span style={{ fontSize: '0.67rem', color: '#697386' }}>처리 완료율: <strong style={{ color: '#425466' }}>{report.metadata.completionRate}%</strong></span>
-              <span style={{ fontSize: '0.67rem', color: '#697386' }}>총 처리 비용: <strong style={{ color: '#425466' }}>{fmtKRW(report.metadata.totalCost)}</strong></span>
-              <span style={{ fontSize: '0.67rem', color: '#697386' }}>분석 방식: <strong style={{ color: '#635bff' }}>Rule-Based (LLM 교체 가능)</strong></span>
-            </div>
+                {/* Metadata footer */}
+                <div style={{ padding: '10px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e3e8ef', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.67rem', color: '#697386' }}>분석 대상: <strong style={{ color: '#425466' }}>{report.metadata.totalDefects}건</strong></span>
+                  <span style={{ fontSize: '0.67rem', color: '#697386' }}>처리 완료율: <strong style={{ color: '#425466' }}>{report.metadata.completionRate}%</strong></span>
+                  <span style={{ fontSize: '0.67rem', color: '#697386' }}>총 처리 비용: <strong style={{ color: '#425466' }}>{fmtKRW(report.metadata.totalCost)}</strong></span>
+                  <span style={{ fontSize: '0.67rem', color: '#697386' }}>분석 방식: <strong style={{ color: '#635bff' }}>Rule-Based (LLM 교체 가능)</strong></span>
+                </div>
+              </>
+            )}
 
           </div>
         )}
