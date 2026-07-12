@@ -106,6 +106,6 @@ export function buildReportPrintHTML(report: GeneratedReport): string {
 }
 
 export function fmtReportFilename(report: GeneratedReport, ext: string): string {
-  const date = new Date().toISOString().slice(0, 10)
-  return `AI보고서_${report.reportType}_${date}.${ext}`
+  const titlePart = report.title.replace(/\s+/g, '_')
+  return `${titlePart}_${report.periodFilenameSuffix}.${ext}`
 }
