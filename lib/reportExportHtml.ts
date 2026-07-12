@@ -1,5 +1,9 @@
 import type { GeneratedReport, ReportSection } from '@/lib/aiReportService'
 
+function safeColor(c: string | undefined, fallback: string): string {
+  return c && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : fallback
+}
+
 function fmtKRW(v: number): string {
   if (v >= 100_000_000) return `${(v / 100_000_000).toFixed(1)}억원`
   if (v >= 10_000) return `${Math.round(v / 10_000)}만원`
@@ -16,7 +20,7 @@ const SLIDE_HEADER_COLORS = ['#1e3a5f', '#9f1239', '#3730a3', '#065f46', '#78350
 function renderSection(section: ReportSection): string {
   if (section.type === 'kpi-grid' && section.kpiItems) {
     return `<div class="rpt-kpi-row">${section.kpiItems.map(item => `
-      <div class="rpt-kpi" style="border-left:3px solid ${item.color ?? '#635bff'}">
+      <div class="rpt-kpi" style="border-left:3px solid ${safeColor(item.color, '#635bff')}">
         <div class="rpt-kpi-lbl">${esc(item.label)}</div>
         <div class="rpt-kpi-v">${esc(item.value)}</div>
         ${item.sub ? `<div class="rpt-kpi-u">${esc(item.sub)}</div>` : ''}
@@ -29,7 +33,7 @@ function renderSection(section: ReportSection): string {
           <span class="rpt-barlist-lbl">${esc(item.label)}</span>
           <span class="rpt-barlist-val">${item.sub ? `<span class="rpt-barlist-sub">${esc(item.sub)}</span>` : ''}${item.value >= 10000 ? esc(fmtKRW(item.value)) : `${item.value}건`}</span>
         </div>
-        <div class="rpt-barlist-track"><div class="rpt-barlist-bar" style="width:${item.pct}%;background:${item.color ?? '#635bff'}"></div></div>
+        <div class="rpt-barlist-track"><div class="rpt-barlist-bar" style="width:${item.pct}%;background:${safeColor(item.color, '#635bff')}"></div></div>
       </div>`).join('')}</div>`
   }
   if (section.type === 'table' && section.tableHeaders && section.tableRows) {
