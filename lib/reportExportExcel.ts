@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs'
+import type ExcelJS from 'exceljs'
 import type { GeneratedReport, ReportSection } from '@/lib/aiReportService'
 import { fmtReportFilename } from '@/lib/reportExportHtml'
 
@@ -82,7 +82,8 @@ function addDetailSheet(wb: ExcelJS.Workbook, section: ReportSection, used: Set<
 }
 
 export async function buildReportExcelWorkbook(report: GeneratedReport): Promise<ExcelJS.Workbook> {
-  const wb = new ExcelJS.Workbook()
+  const { default: ExcelJSLib } = await import('exceljs')
+  const wb = new ExcelJSLib.Workbook()
   wb.creator = report.preparedBy
   wb.created = new Date()
 
