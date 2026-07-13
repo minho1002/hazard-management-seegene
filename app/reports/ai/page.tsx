@@ -192,6 +192,7 @@ export default function AiReportPage() {
   const [report, setReport] = useState<GeneratedReport | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [wordLoading, setWordLoading] = useState(false)
+  const [excelLoading, setExcelLoading] = useState(false)
 
   const now = new Date()
   const [periodType, setPeriodType] = useState<ReportPeriodType>('월별')
@@ -283,13 +284,16 @@ export default function AiReportPage() {
     }
   }
 
-  function handleDownloadExcel() {
+  async function handleDownloadExcel() {
     if (!report) return
+    setExcelLoading(true)
     try {
-      downloadReportExcel(report)
+      await downloadReportExcel(report)
     } catch (err) {
       console.error(err)
       alert('Excel 생성 중 오류가 발생했습니다.')
+    } finally {
+      setExcelLoading(false)
     }
   }
 
@@ -549,11 +553,11 @@ export default function AiReportPage() {
                 </button>
                 <button
                   onClick={handleDownloadExcel}
-                  disabled={isEmptyReport}
+                  disabled={excelLoading || isEmptyReport}
                   title={isEmptyReport ? '데이터가 없어 다운로드할 파일이 없습니다.' : 'Excel 다운로드'}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: isEmptyReport ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: isEmptyReport ? 0.6 : 1 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: 8, cursor: (excelLoading || isEmptyReport) ? 'not-allowed' : 'pointer', fontSize: '0.71rem', color: '#425466', opacity: (excelLoading || isEmptyReport) ? 0.6 : 1 }}
                 >
-                  <i className="fa-solid fa-file-excel" style={{ color: '#059669', fontSize: 13 }} />
+                  <i className={excelLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-excel'} style={{ color: '#059669', fontSize: 13 }} />
                   Excel
                 </button>
                 <button
