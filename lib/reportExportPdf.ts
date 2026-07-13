@@ -10,18 +10,31 @@ const MM_TO_PX = 96 / 25.4
 const HEADER_RESERVED_PX = Math.round(8 * MM_TO_PX)
 const FOOTER_RESERVED_PX = Math.round(8 * MM_TO_PX)
 
-function buildHeaderFooterOverlay(report: GeneratedReport, pageNum: number, totalPages: number): string {
+// Both strips are small (page-width x ~30px) opaque canvases exported as JPEG.
+// Using the full page as a transparent PNG overlay (the previous approach) produced
+// ~3.57M anti-aliased alpha pixels per page that compressed terribly, ballooning a
+// 2-page PDF to ~27.7MB. Since the main content image never extends into these
+// reserved header/footer strips, there's nothing to alpha-composite over — a small
+// opaque JPEG is sufficient and much lighter.
+function setupStripCanvas(width: number, heightPx: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
   const canvas = document.createElement('canvas')
   const dpr = 2
-  canvas.width = A4_WIDTH_PX * dpr
-  canvas.height = A4_HEIGHT_PX * dpr
+  canvas.width = width * dpr
+  canvas.height = heightPx * dpr
   const ctx = canvas.getContext('2d')!
   ctx.scale(dpr, dpr)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, heightPx)
   ctx.font = '8px "Malgun Gothic","맑은 고딕",-apple-system,sans-serif'
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = 'rgb(105,115,134)'
   ctx.strokeStyle = 'rgb(227,232,239)'
   ctx.lineWidth = 1
+  return { canvas, ctx }
+}
+
+function buildHeaderStrip(report: GeneratedReport): string {
+  const { canvas, ctx } = setupStripCanvas(A4_WIDTH_PX, HEADER_RESERVED_PX)
 
   ctx.textAlign = 'left'
   ctx.fillText(report.title, 12, 14)
@@ -32,16 +45,22 @@ function buildHeaderFooterOverlay(report: GeneratedReport, pageNum: number, tota
   ctx.lineTo(A4_WIDTH_PX - 12, 20)
   ctx.stroke()
 
+  return canvas.toDataURL('image/jpeg', 0.95)
+}
+
+function buildFooterStrip(report: GeneratedReport, pageNum: number, totalPages: number): string {
+  const { canvas, ctx } = setupStripCanvas(A4_WIDTH_PX, FOOTER_RESERVED_PX)
+
   ctx.beginPath()
-  ctx.moveTo(12, A4_HEIGHT_PX - 20)
-  ctx.lineTo(A4_WIDTH_PX - 12, A4_HEIGHT_PX - 20)
+  ctx.moveTo(12, 10)
+  ctx.lineTo(A4_WIDTH_PX - 12, 10)
   ctx.stroke()
   ctx.textAlign = 'left'
-  ctx.fillText(`대전충청검사센터 시설관리팀 · 생성: ${report.generatedAt}`, 12, A4_HEIGHT_PX - 10)
+  ctx.fillText(`대전충청검사센터 시설관리팀 · 생성: ${report.generatedAt}`, 12, 20)
   ctx.textAlign = 'right'
-  ctx.fillText(`${pageNum} / ${totalPages}`, A4_WIDTH_PX - 12, A4_HEIGHT_PX - 10)
+  ctx.fillText(`${pageNum} / ${totalPages}`, A4_WIDTH_PX - 12, 20)
 
-  return canvas.toDataURL('image/png')
+  return canvas.toDataURL('image/jpeg', 0.95)
 }
 
 /**
@@ -103,8 +122,10 @@ export async function downloadReportPDF(report: GeneratedReport): Promise<void> 
       const imgData = sliceCanvas.toDataURL('image/jpeg', 0.98)
       if (i > 0) pdf.addPage([A4_WIDTH_PX, A4_HEIGHT_PX])
       pdf.addImage(imgData, 'JPEG', 0, HEADER_RESERVED_PX, A4_WIDTH_PX, sliceHeight / scale)
-      const overlay = buildHeaderFooterOverlay(report, i + 1, breaks.length)
-      pdf.addImage(overlay, 'PNG', 0, 0, A4_WIDTH_PX, A4_HEIGHT_PX)
+      const headerStrip = buildHeaderStrip(report)
+      const footerStrip = buildFooterStrip(report, i + 1, breaks.length)
+      pdf.addImage(headerStrip, 'JPEG', 0, 0, A4_WIDTH_PX, HEADER_RESERVED_PX)
+      pdf.addImage(footerStrip, 'JPEG', 0, A4_HEIGHT_PX - FOOTER_RESERVED_PX, A4_WIDTH_PX, FOOTER_RESERVED_PX)
       sliceStart = sliceEnd
     })
 
