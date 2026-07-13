@@ -81,6 +81,27 @@ export function isRecurring(defect: Defect): boolean {
   return defect.recurrenceCount > 0
 }
 
+// 대시보드 "미완결 현황" 카드 — 접수·조치중 상태(최종완료/조치완료/재점검/보류 제외)
+export function isInProgressStatus(defect: Defect): boolean {
+  return defect.status === 'open' || defect.status === 'reviewing' || defect.status === 'assigned' || defect.status === 'in_progress'
+}
+
+// 조치예정일이 지정되어 있고 아직 지나지 않은(=지연 아님) 건
+export function isScheduled(defect: Defect): boolean {
+  if (!defect.expectedCompletionDate) return false
+  if (defect.status === 'completed' || defect.status === 'hold' || defect.status === 'action_done') return false
+  return !isOverdue(defect)
+}
+
+export function needsRecheck(defect: Defect): boolean {
+  return defect.status === 'recheck_needed'
+}
+
+// 진행중·조치예정·지연·재점검 중 하나라도 해당하면 "미완결" (동일 건이 여러 조건에 겹쳐도 1건으로만 집계)
+export function isUnresolved(defect: Defect): boolean {
+  return isInProgressStatus(defect) || isScheduled(defect) || isOverdue(defect) || needsRecheck(defect)
+}
+
 export function needsTodayAction(defect: Defect): boolean {
   if (defect.status === 'completed') return false
   if (defect.status === 'recheck_needed') return true

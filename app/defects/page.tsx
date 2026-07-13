@@ -12,6 +12,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import PhotoCompareCell from '@/components/defects/PhotoCompareCell'
 import {
   isOverdue, isRecurring, needsTodayAction, needsAfterPhoto, isFullyClosed, getPaymentBadge, getCostBearerStatus,
+  isInProgressStatus, isScheduled, isUnresolved,
   COLORS, STATUS_FLOW, STATUS_META,
 } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -109,6 +110,9 @@ function DefectsPageInner() {
       if (quickFilter === 'overdue' && !isOverdue(d)) return false
       if (quickFilter === 'recurring' && !(isRecurring(d) && d.status !== 'completed')) return false
       if (quickFilter === 'recheck' && d.status !== 'recheck_needed') return false
+      if (quickFilter === 'inprogress' && !isInProgressStatus(d)) return false
+      if (quickFilter === 'scheduled' && !isScheduled(d)) return false
+      if (quickFilter === 'unresolved' && !isUnresolved(d)) return false
       if (quickFilter === 'nophoto' && !needsAfterPhoto(d, state.files)) return false
       if (quickFilter === 'unclassified' && (d.defectType ?? '확인 필요') !== '확인 필요') return false
       if (quickFilter === 'costunresolved' && getCostBearerStatus(d) !== '미정') return false

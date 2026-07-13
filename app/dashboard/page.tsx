@@ -8,6 +8,7 @@ import DefectCalendar from '@/components/dashboard/DefectCalendar'
 import CategoryTabBar, { type CategoryTab } from '@/components/dashboard/CategoryTabBar'
 import {
   needsTodayAction, isOverdue, COLORS, getPaymentBadge,
+  isInProgressStatus, isScheduled, needsRecheck,
 } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canRegister, useCurrentRole } from '@/lib/permissions'
@@ -132,10 +133,19 @@ export default function DashboardPage() {
     return String(d.categoryId) === effectiveActiveTab
   })
 
-  // 카드1: 진행 중인 미완결 건수 (진행중/지연/재점검필요/조치완료요청)
-  const unresolvedItems = defects.filter(d =>
-    d.status !== 'completed' && (d.status === 'in_progress' || d.status === 'recheck_needed' || d.status === 'action_done' || isOverdue(d))
-  )
+  // 카드1: 미완결 현황 — 접수·조치중 / 조치예정 / 지연 / 재점검필요 로 구분 집계
+  // (같은 건이 여러 조건에 걸쳐도 "미완결 합계"에는 1건으로만 반영한다)
+  const inProgressItems = defects.filter(isInProgressStatus)
+  const scheduledItems = defects.filter(isScheduled)
+  const overdueItems = defects.filter(isOverdue)
+  const recheckItems = defects.filter(needsRecheck)
+  const unresolvedIds = new Set<number>([...inProgressItems, ...scheduledItems, ...overdueItems, ...recheckItems].map(d => d.id))
+  const unresolvedStatusCards = [
+    { key: 'inprogress', label: '진행 중', count: inProgressItems.length, color: '#1D4ED8' },
+    { key: 'scheduled', label: '조치 예정', count: scheduledItems.length, color: '#1D4ED8' },
+    { key: 'overdue', label: '지연', count: overdueItems.length, color: '#C2410C' },
+    { key: 'recheck', label: '재점검 필요', count: recheckItems.length, color: '#C2410C' },
+  ]
 
   // 카드2: 조회기간 집행 비용 (defects는 이미 조회기간+카테고리 탭이 반영된 집합)
   const periodOwnCost = defects.filter(d => costBucket(d) === '우리측').reduce((s, d) => s + (d.totalCost || 0), 0)
@@ -228,11 +238,28 @@ export default function DashboardPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ ...card, padding: '14px 16px', position: 'relative' }}>
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: COLORS.danger, borderRadius: '10px 10px 0 0' }} />
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#697386', marginBottom: 6 }}>🚨 진행 중인 미완결 건수</div>
-              <Link href="/defects?filter=today" style={{ textDecoration: 'none' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.03em', lineHeight: 1 }}>{unresolvedItems.length}<span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#697386', marginLeft: 4 }}>건</span></div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#697386', marginBottom: 8 }}>🚨 미완결 현황 · {period.label}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {unresolvedStatusCards.map(c => (
+                  <Link
+                    key={c.key}
+                    href={`/defects?filter=${c.key}`}
+                    style={{ textDecoration: 'none', display: 'block', padding: '8px 10px', borderRadius: 8, background: '#f8f9fb', border: '1px solid #eef1f5' }}
+                  >
+                    <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#697386' }}>{c.label}</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: c.color }}>{c.count}<span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#697386', marginLeft: 3 }}>건</span></div>
+                  </Link>
+                ))}
+              </div>
+              <Link
+                href="/defects?filter=unresolved"
+                style={{ textDecoration: 'none', display: 'block', marginTop: 8, padding: '10px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FCA5A5' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#B91C1C' }}>미완결 합계</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B91C1C' }}>{unresolvedIds.size}<span style={{ fontSize: '0.75rem', fontWeight: 600, marginLeft: 3 }}>건</span></span>
+                </div>
               </Link>
-              <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 4 }}>오늘 처리해야 하는 진행중·지연·재점검·조치완료요청 포함</div>
             </div>
 
             <div style={{ ...card, padding: '14px 16px', position: 'relative' }}>
@@ -275,7 +302,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {unresolvedItems.length === 0 && (
+        {unresolvedIds.size === 0 && (
           <div style={{ marginBottom: 16 }}>
             <EmptyState icon="fa-solid fa-circle-check" message="처리할 미완결 항목이 없습니다." actionLabel={canRegister(role) ? '하자 등록' : undefined} actionHref={canRegister(role) ? '/defects/new' : undefined} />
           </div>
