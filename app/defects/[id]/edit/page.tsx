@@ -98,7 +98,6 @@ export default function EditDefectPage() {
   }
 
   function submit() {
-    if (!form.title.trim()) { alert('제목을 입력하세요.'); return }
     if (form.categoryId === '__custom__' && !customCategoryName.trim()) { alert('카테고리를 입력하세요.'); return }
     const categoryId = form.categoryId === '__custom__'
       ? addCategory(customCategoryName)
@@ -159,7 +158,7 @@ export default function EditDefectPage() {
               <div style={{ padding: 18 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>제목 *</label>
+                    <label style={labelCls}>제목</label>
                     <input style={inputCls} placeholder="예: 3층 화장실 천장 누수" value={form.title} onChange={e => setField('title', e.target.value)} />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>

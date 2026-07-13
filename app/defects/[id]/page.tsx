@@ -803,17 +803,16 @@ export default function DefectDetailPage() {
         >
           <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 430, maxWidth: '94vw', boxShadow: '0 8px 28px rgba(10,37,64,.13)', border: '1px solid #e3e8ef' }}>
             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0a2540', marginBottom: 4 }}>조치완료 처리</div>
-            <div style={{ fontSize: '0.72rem', color: '#697386', marginBottom: 16 }}>조치 내용, 실제 비용, 조치 후 사진이 있어야 조치완료로 전환할 수 있습니다.</div>
+            <div style={{ fontSize: '0.72rem', color: '#697386', marginBottom: 16 }}>조치 내용과 실제 비용은 선택 입력입니다. 비워두고 바로 전환할 수 있습니다.</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>조치 내용 *</label>
+                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>조치 내용</label>
                 <textarea style={{ ...modalInputStyle, resize: 'vertical', lineHeight: 1.6 }} rows={3} placeholder="예: 우레탄 방수 보강 시공 완료" value={actionDoneForm.actionContent} onChange={e => setActionDoneForm(f => ({ ...f, actionContent: e.target.value }))} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>실제 비용 (원) *</label>
+                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>실제 비용 (원)</label>
                 <input type="number" style={modalInputStyle} placeholder="0" value={actionDoneForm.actualCost} onChange={e => setActionDoneForm(f => ({ ...f, actualCost: e.target.value }))} />
               </div>
-              <div style={{ fontSize: '0.7rem', color: '#697386' }}>조치 후 사진은 아래 "사진 / 첨부파일" 영역의 "조치후" 섹션에서 먼저 업로드해주세요.</div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowActionDoneModal(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}>취소</button>

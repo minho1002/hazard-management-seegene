@@ -149,18 +149,6 @@ export function getStatusTransitionError(
 
   if (target === 'completed') {
     if (!canApproveCompletion(ctx.role)) return '최종완료 승인 권한이 없습니다.'
-    if (getCostBearerStatus(defect) === '미정') {
-      return '비용 부담 주체를 확정해야 최종완료할 수 있습니다.'
-    }
-  }
-
-  if (target === 'action_done') {
-    const contentOk = !!(ctx.actionContent?.trim() || defect.lastActionContent?.trim())
-    const costOk = (ctx.actualCost ?? defect.totalCost ?? 0) > 0
-    const afterPhotoOk = ctx.files.some(f => f.defectId === defect.id && f.photoType === 'after')
-    if (!contentOk) return '조치완료로 전환하려면 조치 내용을 입력해야 합니다.'
-    if (!costOk) return '조치완료로 전환하려면 실제 비용을 입력해야 합니다.'
-    if (!afterPhotoOk) return '조치완료로 전환하려면 조치 후 사진이 필요합니다.'
   }
 
   return null

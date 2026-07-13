@@ -213,12 +213,7 @@ function NewDefectPageInner() {
   }
 
   function validate(): string | null {
-    if (!form.title.trim()) return '하자명을 입력하세요.'
-    if (!form.locationText.trim()) return '발생 위치(위치 설명)를 입력하세요.'
-    if (!form.categoryId) return '카테고리를 선택하세요.'
     if (form.categoryId === '__custom__' && !customCategoryName.trim()) return '카테고리를 입력하세요.'
-    if (!form.severity) return '심각도를 선택하세요.'
-    if (!form.description.trim()) return '상세 설명을 입력하세요.'
     if (form.expectedCompletionDate && form.firstOccurredAt && form.expectedCompletionDate < form.firstOccurredAt) {
       return '예상 완료일은 발생일보다 이전일 수 없습니다.'
     }
@@ -402,11 +397,11 @@ function NewDefectPageInner() {
               <div style={{ padding: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>하자명 *</label>
+                    <label style={labelCls}>하자명</label>
                     <input style={inputCls} placeholder="예: 3층 화장실 천장 누수" value={form.title} onChange={e => setField('title', e.target.value)} />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>상세 설명 *</label>
+                    <label style={labelCls}>상세 설명</label>
                     <textarea style={{ ...inputCls, resize: 'vertical', lineHeight: 1.6 }} rows={2} placeholder="상세 내용..." value={form.description} onChange={e => setField('description', e.target.value)} />
                   </div>
                   <div>
@@ -414,7 +409,7 @@ function NewDefectPageInner() {
                     <input type="date" style={inputCls} value={form.firstOccurredAt} onChange={e => setField('firstOccurredAt', e.target.value)} />
                   </div>
                   <div>
-                    <label style={labelCls}>카테고리 *</label>
+                    <label style={labelCls}>카테고리</label>
                     <select style={selectCls} value={form.categoryId} onChange={e => setField('categoryId', e.target.value)}>
                       <option value="">선택</option>
                       {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -442,7 +437,7 @@ function NewDefectPageInner() {
                     })()}
                   </div>
                   <div>
-                    <label style={labelCls}>심각도 *</label>
+                    <label style={labelCls}>심각도</label>
                     <select style={selectCls} value={form.severity} onChange={e => setField('severity', e.target.value)}>
                       <option value="low">낮음</option>
                       <option value="medium">보통</option>
@@ -506,7 +501,7 @@ function NewDefectPageInner() {
                     <input style={inputCls} placeholder="예: 201호 사무실" value={form.roomName} onChange={e => setField('roomName', e.target.value)} />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={labelCls}>발생 위치(위치 설명) *</label>
+                    <label style={labelCls}>발생 위치(위치 설명)</label>
                     <input style={inputCls} placeholder="예: 3층 남쪽 화장실 천장" value={form.locationText} onChange={e => setField('locationText', e.target.value)} />
                   </div>
                 </div>
@@ -631,7 +626,7 @@ function NewDefectPageInner() {
 
                 {/* 비용 부담 주체 — 선택값에 따라 가변 비용 필드가 켜진다 */}
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px dashed #e3e8ef' }}>
-                  <label style={labelCls}>비용 부담 주체 *</label>
+                  <label style={labelCls}>비용 부담 주체</label>
                   <select style={{ ...selectCls, maxWidth: 240 }} value={form.costHandlingType} onChange={e => setField('costHandlingType', e.target.value)}>
                     {COST_HANDLING_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
