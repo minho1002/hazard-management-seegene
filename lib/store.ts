@@ -113,6 +113,7 @@ export interface Defect {
   costUndecidedReason?: string | null
   vendorVisitDate?: string | null
   paymentCompletedAt?: string | null
+  actionCompletedAt?: string | null
 }
 
 export interface DefectStatusHistory {
@@ -572,6 +573,7 @@ export function useStore() {
 
     const patch: Partial<Defect> = { status: target, totalCost }
     if (opts.actionContent) patch.lastActionContent = opts.actionContent
+    if (target === 'action_done') patch.actionCompletedAt = new Date().toISOString().slice(0, 10)
     if (totalCost > 0 && defect.predictedCostAvg && defect.predictionErrorRate == null) {
       patch.predictionErrorRate = Math.round((Math.abs(totalCost - defect.predictedCostAvg) / totalCost) * 1000) / 10
     }

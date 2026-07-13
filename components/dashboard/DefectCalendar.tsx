@@ -4,13 +4,14 @@ import { useMemo, useState } from 'react'
 import type { Defect } from '@/lib/store'
 import { isOverdue, OVERDUE_DAYS_BY_SEVERITY, type SeverityKey } from '@/lib/designTokens'
 
-export type CalendarEventType = 'occurred' | 'vendorVisit' | 'paymentDone' | 'overdue'
+export type CalendarEventType = 'occurred' | 'vendorVisit' | 'actionDone' | 'paymentDone' | 'overdue'
 
 const EVENT_META: Record<CalendarEventType, { icon: string; color: string; bg: string; label: string; priority: number }> = {
   overdue:     { icon: '⚠️', color: '#C2410C', bg: '#FFEDD5', label: '조치 지연일',     priority: 0 },
   occurred:    { icon: '🔴', color: '#B91C1C', bg: '#FEE2E2', label: '하자 발생일',     priority: 1 },
   vendorVisit: { icon: '🏢', color: '#1D4ED8', bg: '#DBEAFE', label: '업체 방문 예정일', priority: 2 },
-  paymentDone: { icon: '💰', color: '#15803D', bg: '#DCFCE7', label: '결제 완료일',     priority: 3 },
+  actionDone:  { icon: '🛠️', color: '#0F766E', bg: '#CCFBF1', label: '조치 완료일',     priority: 3 },
+  paymentDone: { icon: '💰', color: '#15803D', bg: '#DCFCE7', label: '결제 완료일',     priority: 4 },
 }
 
 interface DayEvent { type: CalendarEventType; defect: Defect }
@@ -56,6 +57,7 @@ export default function DefectCalendar({ defects, selectedDate, onSelectDate }: 
     defects.forEach(d => {
       push(d.firstOccurredAt, 'occurred', d)
       push(d.vendorVisitDate, 'vendorVisit', d)
+      push(d.actionCompletedAt, 'actionDone', d)
       push(d.paymentCompletedAt, 'paymentDone', d)
       if (isOverdue(d)) push(overdueSinceDate(d), 'overdue', d)
     })
