@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "db:push": "npx drizzle-kit push",
-    "db:seed": "npx tsx db/seed.ts"
+    "db:seed": "npx tsx db/seed.ts",
+    "db:pg:generate": "drizzle-kit generate --config=drizzle.pg.config.ts",
+    "db:pg:push": "drizzle-kit push --config=drizzle.pg.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
