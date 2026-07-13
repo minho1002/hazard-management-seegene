@@ -453,7 +453,24 @@ export function useStore() {
       reviewStatus: data.reviewStatus ?? '미검토',
       costApprovalStatus: data.costApprovalStatus ?? '미승인',
     }
-    const next = { ...current, defects: [...current.defects, defect] }
+    // 등록 시 도면 클릭으로 지정한 위치도 다중 마커(defectLocations)에 함께 기록한다.
+    const defectLocations = defect.locationX != null
+      ? [...current.defectLocations, {
+          id: nextId(current.defectLocations),
+          defectId: defect.id,
+          floorPlanId: defect.floorPlanId ?? 1,
+          x: defect.locationX,
+          y: defect.locationY ?? 0,
+          label: defect.locationText ?? null,
+          description: null,
+          severity: null,
+          status: null,
+          notes: null,
+          createdAt: new Date().toISOString(),
+          createdBy: null,
+        }]
+      : current.defectLocations
+    const next: AppState = { ...current, defects: [...current.defects, defect], defectLocations }
     persistState(next)
     setState(next)
     return defect.id
@@ -461,10 +478,37 @@ export function useStore() {
 
   const updateDefect = useCallback((id: number, patch: Partial<Defect>) => {
     const current = loadState()
-    const next = {
-      ...current,
-      defects: current.defects.map(d => d.id === id ? { ...d, ...patch } : d),
+    const defects = current.defects.map(d => d.id === id ? { ...d, ...patch } : d)
+    // 수정 화면의 단일 위치 클릭(locationX/Y)은 도면 위치 다중 마커(defectLocations)와
+    // 별개 저장소라 그대로 두면 상세 화면 도면에는 반영되지 않는다 — 대표(첫) 마커에 동기화한다.
+    let defectLocations = current.defectLocations
+    if (patch.locationX !== undefined || patch.locationY !== undefined) {
+      const updated = defects.find(d => d.id === id)
+      if (updated && updated.locationX != null) {
+        const primary = defectLocations.filter(l => l.defectId === id).sort((a, b) => a.id - b.id)[0]
+        if (primary) {
+          defectLocations = defectLocations.map(l => l.id === primary.id
+            ? { ...l, x: updated.locationX as number, y: updated.locationY ?? 0, floorPlanId: updated.floorPlanId ?? l.floorPlanId }
+            : l)
+        } else {
+          defectLocations = [...defectLocations, {
+            id: nextId(defectLocations),
+            defectId: id,
+            floorPlanId: updated.floorPlanId ?? 1,
+            x: updated.locationX as number,
+            y: updated.locationY ?? 0,
+            label: updated.locationText ?? null,
+            description: null,
+            severity: null,
+            status: null,
+            notes: null,
+            createdAt: new Date().toISOString(),
+            createdBy: null,
+          }]
+        }
+      }
     }
+    const next: AppState = { ...current, defects, defectLocations }
     persistState(next)
     setState(next)
   }, [])
