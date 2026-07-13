@@ -10,17 +10,38 @@ const MM_TO_PX = 96 / 25.4
 const HEADER_RESERVED_PX = Math.round(8 * MM_TO_PX)
 const FOOTER_RESERVED_PX = Math.round(8 * MM_TO_PX)
 
-function drawRunningHeaderFooter(pdf: jsPDF, report: GeneratedReport, pageNum: number, totalPages: number): void {
-  pdf.setFontSize(8)
-  pdf.setTextColor(105, 115, 134)
-  pdf.text(report.title, 12, 14)
-  pdf.text(report.period, A4_WIDTH_PX - 12, 14, { align: 'right' })
-  pdf.setDrawColor(227, 232, 239)
-  pdf.line(12, 20, A4_WIDTH_PX - 12, 20)
+function buildHeaderFooterOverlay(report: GeneratedReport, pageNum: number, totalPages: number): string {
+  const canvas = document.createElement('canvas')
+  const dpr = 2
+  canvas.width = A4_WIDTH_PX * dpr
+  canvas.height = A4_HEIGHT_PX * dpr
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(dpr, dpr)
+  ctx.font = '8px "Malgun Gothic","맑은 고딕",-apple-system,sans-serif'
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = 'rgb(105,115,134)'
+  ctx.strokeStyle = 'rgb(227,232,239)'
+  ctx.lineWidth = 1
 
-  pdf.line(12, A4_HEIGHT_PX - 20, A4_WIDTH_PX - 12, A4_HEIGHT_PX - 20)
-  pdf.text(`대전충청검사센터 시설관리팀 · 생성: ${report.generatedAt}`, 12, A4_HEIGHT_PX - 10)
-  pdf.text(`${pageNum} / ${totalPages}`, A4_WIDTH_PX - 12, A4_HEIGHT_PX - 10, { align: 'right' })
+  ctx.textAlign = 'left'
+  ctx.fillText(report.title, 12, 14)
+  ctx.textAlign = 'right'
+  ctx.fillText(report.period, A4_WIDTH_PX - 12, 14)
+  ctx.beginPath()
+  ctx.moveTo(12, 20)
+  ctx.lineTo(A4_WIDTH_PX - 12, 20)
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(12, A4_HEIGHT_PX - 20)
+  ctx.lineTo(A4_WIDTH_PX - 12, A4_HEIGHT_PX - 20)
+  ctx.stroke()
+  ctx.textAlign = 'left'
+  ctx.fillText(`대전충청검사센터 시설관리팀 · 생성: ${report.generatedAt}`, 12, A4_HEIGHT_PX - 10)
+  ctx.textAlign = 'right'
+  ctx.fillText(`${pageNum} / ${totalPages}`, A4_WIDTH_PX - 12, A4_HEIGHT_PX - 10)
+
+  return canvas.toDataURL('image/png')
 }
 
 /**
@@ -82,7 +103,8 @@ export async function downloadReportPDF(report: GeneratedReport): Promise<void> 
       const imgData = sliceCanvas.toDataURL('image/jpeg', 0.98)
       if (i > 0) pdf.addPage([A4_WIDTH_PX, A4_HEIGHT_PX])
       pdf.addImage(imgData, 'JPEG', 0, HEADER_RESERVED_PX, A4_WIDTH_PX, sliceHeight / scale)
-      drawRunningHeaderFooter(pdf, report, i + 1, breaks.length)
+      const overlay = buildHeaderFooterOverlay(report, i + 1, breaks.length)
+      pdf.addImage(overlay, 'PNG', 0, 0, A4_WIDTH_PX, A4_HEIGHT_PX)
       sliceStart = sliceEnd
     })
 

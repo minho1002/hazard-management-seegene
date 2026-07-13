@@ -96,7 +96,6 @@ export async function buildReportExcelWorkbook(report: GeneratedReport): Promise
   summary.getCell('A1').font = { bold: true, size: 14 }
   summary.addRow([report.subtitle])
   summary.addRow([])
-  summary.addRow(['보고서 유형', report.reportType])
   summary.addRow(['기준기간', report.period])
   summary.addRow(['생성일', report.generatedAt])
   summary.addRow(['작성자', report.preparedBy])
