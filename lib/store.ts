@@ -423,22 +423,21 @@ export function useStore() {
   }, [])
 
   const addDefect = useCallback((data: Omit<Defect, 'id' | 'caseNumber' | 'recurrenceCount' | 'totalCost' | 'createdAt'>) => {
-    setState(prev => {
-      const defect: Defect = {
-        ...data,
-        id: nextId(prev.defects),
-        caseNumber: nextCase(prev.defects),
-        recurrenceCount: 0,
-        totalCost: 0,
-        createdAt: new Date().toISOString().slice(0, 10),
-        defectType: data.defectType ?? '확인 필요',
-        reviewStatus: data.reviewStatus ?? '미검토',
-        costApprovalStatus: data.costApprovalStatus ?? '미승인',
-      }
-      const next = { ...prev, defects: [...prev.defects, defect] }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const defect: Defect = {
+      ...data,
+      id: nextId(current.defects),
+      caseNumber: nextCase(current.defects),
+      recurrenceCount: 0,
+      totalCost: 0,
+      createdAt: new Date().toISOString().slice(0, 10),
+      defectType: data.defectType ?? '확인 필요',
+      reviewStatus: data.reviewStatus ?? '미검토',
+      costApprovalStatus: data.costApprovalStatus ?? '미승인',
+    }
+    const next = { ...current, defects: [...current.defects, defect] }
+    persistState(next)
+    setState(next)
   }, [])
 
   const addDefectAndGetId = useCallback((data: Omit<Defect, 'id' | 'caseNumber' | 'recurrenceCount' | 'totalCost' | 'createdAt'>): number => {
@@ -461,14 +460,13 @@ export function useStore() {
   }, [])
 
   const updateDefect = useCallback((id: number, patch: Partial<Defect>) => {
-    setState(prev => {
-      const next = {
-        ...prev,
-        defects: prev.defects.map(d => d.id === id ? { ...d, ...patch } : d),
-      }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const next = {
+      ...current,
+      defects: current.defects.map(d => d.id === id ? { ...d, ...patch } : d),
+    }
+    persistState(next)
+    setState(next)
   }, [])
 
   const softDeleteDefect = useCallback((id: number, reason: string, deletedBy: string | null): { ok: boolean; error?: string } => {
@@ -487,14 +485,13 @@ export function useStore() {
   }, [])
 
   const restoreDefect = useCallback((id: number) => {
-    setState(prev => {
-      const next: AppState = {
-        ...prev,
-        defects: prev.defects.map(d => d.id === id ? { ...d, deletedAt: null, deletedBy: null, deleteReason: null } : d),
-      }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const next: AppState = {
+      ...current,
+      defects: current.defects.map(d => d.id === id ? { ...d, deletedAt: null, deletedBy: null, deleteReason: null } : d),
+    }
+    persistState(next)
+    setState(next)
   }, [])
 
   const updateDefectStatus = useCallback((id: number, target: StatusKey, opts: {
@@ -625,52 +622,48 @@ export function useStore() {
   }, [])
 
   const updateDefectLocation = useCallback((id: number, patch: Partial<Pick<DefectLocation, 'label' | 'description' | 'severity' | 'status' | 'notes'>>) => {
-    setState(prev => {
-      const next: AppState = { ...prev, defectLocations: prev.defectLocations.map(l => l.id === id ? { ...l, ...patch } : l) }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const next: AppState = { ...current, defectLocations: current.defectLocations.map(l => l.id === id ? { ...l, ...patch } : l) }
+    persistState(next)
+    setState(next)
   }, [])
 
   const updateDefectLocationPosition = useCallback((id: number, x: number, y: number) => {
-    setState(prev => {
-      const loc = prev.defectLocations.find(l => l.id === id)
-      const locations = prev.defectLocations.map(l => l.id === id ? { ...l, x, y } : l)
-      const next: AppState = {
-        ...prev,
-        defectLocations: locations,
-        defects: loc ? mirrorPrimaryLocation(prev.defects, locations, loc.defectId) : prev.defects,
-      }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const loc = current.defectLocations.find(l => l.id === id)
+    const locations = current.defectLocations.map(l => l.id === id ? { ...l, x, y } : l)
+    const next: AppState = {
+      ...current,
+      defectLocations: locations,
+      defects: loc ? mirrorPrimaryLocation(current.defects, locations, loc.defectId) : current.defects,
+    }
+    persistState(next)
+    setState(next)
   }, [])
 
   const removeDefectLocation = useCallback((id: number) => {
-    setState(prev => {
-      const loc = prev.defectLocations.find(l => l.id === id)
-      const locations = prev.defectLocations.filter(l => l.id !== id)
-      const next: AppState = {
-        ...prev,
-        defectLocations: locations,
-        defects: loc ? mirrorPrimaryLocation(prev.defects, locations, loc.defectId) : prev.defects,
-      }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const loc = current.defectLocations.find(l => l.id === id)
+    const locations = current.defectLocations.filter(l => l.id !== id)
+    const next: AppState = {
+      ...current,
+      defectLocations: locations,
+      defects: loc ? mirrorPrimaryLocation(current.defects, locations, loc.defectId) : current.defects,
+    }
+    persistState(next)
+    setState(next)
   }, [])
 
   const clearDefectLocations = useCallback((defectId: number) => {
-    setState(prev => {
-      const locations = prev.defectLocations.filter(l => l.defectId !== defectId)
-      const next: AppState = {
-        ...prev,
-        defectLocations: locations,
-        defects: mirrorPrimaryLocation(prev.defects, locations, defectId),
-      }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const locations = current.defectLocations.filter(l => l.defectId !== defectId)
+    const next: AppState = {
+      ...current,
+      defectLocations: locations,
+      defects: mirrorPrimaryLocation(current.defects, locations, defectId),
+    }
+    persistState(next)
+    setState(next)
   }, [])
 
   const updateRecurringStatus = useCallback((id: number, level: Defect['recurringLevel'], opts: {
@@ -709,79 +702,75 @@ export function useStore() {
   }, [])
 
   const addLog = useCallback((logData: Omit<DefectLog, 'id'>) => {
-    setState(prev => {
-      const log: DefectLog = { ...logData, id: nextId(prev.logs) }
-      const newLogs = [...prev.logs, log]
-      const defect = prev.defects.find(d => d.id === logData.defectId)
-      if (!defect) return prev
-      const defectLogs = newLogs.filter(l => l.defectId === logData.defectId && l.costAmount)
-      const totalCost = defectLogs.reduce((s, l) => s + (l.costAmount || 0), 0)
-      const patch: Partial<Defect> = {
-        totalCost,
-        lastOccurredAt: logData.occurredAt.slice(0, 10),
-      }
-      if (logData.logType === 'recurrence') {
-        patch.recurrenceCount = (defect.recurrenceCount || 0) + 1
-      }
-      // 실제 비용이 처음 확정될 때 예측 오차율 계산
-      if (totalCost > 0 && defect.predictedCostAvg && defect.predictionErrorRate == null) {
-        patch.predictionErrorRate = Math.round(
-          (Math.abs(totalCost - defect.predictedCostAvg) / totalCost) * 1000
-        ) / 10
-      }
-      const next = {
-        ...prev,
-        logs: newLogs,
-        defects: prev.defects.map(d => d.id === logData.defectId ? { ...d, ...patch } : d),
-      }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const log: DefectLog = { ...logData, id: nextId(current.logs) }
+    const newLogs = [...current.logs, log]
+    const defect = current.defects.find(d => d.id === logData.defectId)
+    if (!defect) return
+    const defectLogs = newLogs.filter(l => l.defectId === logData.defectId && l.costAmount)
+    const totalCost = defectLogs.reduce((s, l) => s + (l.costAmount || 0), 0)
+    const patch: Partial<Defect> = {
+      totalCost,
+      lastOccurredAt: logData.occurredAt.slice(0, 10),
+    }
+    if (logData.logType === 'recurrence') {
+      patch.recurrenceCount = (defect.recurrenceCount || 0) + 1
+    }
+    // 실제 비용이 처음 확정될 때 예측 오차율 계산
+    if (totalCost > 0 && defect.predictedCostAvg && defect.predictionErrorRate == null) {
+      patch.predictionErrorRate = Math.round(
+        (Math.abs(totalCost - defect.predictedCostAvg) / totalCost) * 1000
+      ) / 10
+    }
+    const next = {
+      ...current,
+      logs: newLogs,
+      defects: current.defects.map(d => d.id === logData.defectId ? { ...d, ...patch } : d),
+    }
+    persistState(next)
+    setState(next)
   }, [])
 
   const saveFloorImage = useCallback((fpId: number, base64: string) => {
-    setState(prev => {
-      const next = {
-        ...prev,
-        floorPlanImages: { ...prev.floorPlanImages, [fpId]: base64 },
-      }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const next = {
+      ...current,
+      floorPlanImages: { ...current.floorPlanImages, [fpId]: base64 },
+    }
+    persistState(next)
+    setState(next)
   }, [])
 
   const addFile = useCallback((data: Omit<DefectFile, 'id' | 'uploadedAt'>) => {
-    setState(prev => {
-      const file: DefectFile = { ...data, id: nextId(prev.files), uploadedAt: new Date().toISOString() }
-      const next = { ...prev, files: [...prev.files, file] }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const file: DefectFile = { ...data, id: nextId(current.files), uploadedAt: new Date().toISOString() }
+    const next = { ...current, files: [...current.files, file] }
+    persistState(next)
+    setState(next)
   }, [])
 
   const deleteFile = useCallback((id: number, reason: string, deletedBy: string | null) => {
-    setState(prev => {
-      const file = prev.files.find(f => f.id === id)
-      if (!file) return prev
-      const deleteLog: DefectFileDeleteLog = {
-        id: nextId(prev.fileDeleteLogs),
-        fileId: file.id,
-        defectId: file.defectId,
-        fileName: file.fileName,
-        photoType: file.photoType,
-        uploadedBy: file.uploadedBy ?? null,
-        deletedBy,
-        deletedAt: new Date().toISOString(),
-        reason,
-      }
-      const next: AppState = {
-        ...prev,
-        files: prev.files.filter(f => f.id !== id),
-        fileDeleteLogs: [...prev.fileDeleteLogs, deleteLog],
-      }
-      persistState(next)
-      return next
-    })
+    const current = loadState()
+    const file = current.files.find(f => f.id === id)
+    if (!file) return
+    const deleteLog: DefectFileDeleteLog = {
+      id: nextId(current.fileDeleteLogs),
+      fileId: file.id,
+      defectId: file.defectId,
+      fileName: file.fileName,
+      photoType: file.photoType,
+      uploadedBy: file.uploadedBy ?? null,
+      deletedBy,
+      deletedAt: new Date().toISOString(),
+      reason,
+    }
+    const next: AppState = {
+      ...current,
+      files: current.files.filter(f => f.id !== id),
+      fileDeleteLogs: [...current.fileDeleteLogs, deleteLog],
+    }
+    persistState(next)
+    setState(next)
   }, [])
 
   return {

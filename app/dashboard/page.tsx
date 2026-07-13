@@ -7,9 +7,8 @@ import EmptyState from '@/components/ui/EmptyState'
 import DefectCalendar from '@/components/dashboard/DefectCalendar'
 import CategoryTabBar, { type CategoryTab } from '@/components/dashboard/CategoryTabBar'
 import {
-  needsTodayAction, isOverdue, isRecurring, COLORS, getPaymentBadge,
+  needsTodayAction, isOverdue, COLORS, getPaymentBadge,
 } from '@/lib/designTokens'
-import { generateActionPlanOpinion } from '@/lib/aiReportService'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canRegister, useCurrentRole } from '@/lib/permissions'
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
@@ -20,6 +19,20 @@ function fmtKRW(n: number) {
 
 const ALL_TAB_KEY = '__all__'
 const UNCATEGORIZED_TAB_KEY = '__uncategorized__'
+
+type PeriodType = 'today' | 'week' | 'month' | 'year' | 'custom' | 'all'
+
+const PERIOD_OPTIONS: { key: PeriodType; label: string }[] = [
+  { key: 'today', label: '오늘' },
+  { key: 'week', label: '이번 주' },
+  { key: 'month', label: '이번 달' },
+  { key: 'year', label: '올해' },
+  { key: 'custom', label: '사용자 지정' },
+  { key: 'all', label: '전체 기간' },
+]
+
+function pad2(n: number) { return String(n).padStart(2, '0') }
+function toDateStr(d: Date) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
 
 function costBucket(d: Defect): '우리측' | '타업체' | '기타' {
   if (d.costHandlingType === '우리측 부담') return '우리측'
@@ -36,7 +49,9 @@ export default function DashboardPage() {
   const [updatedAt, setUpdatedAt] = useState('')
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB_KEY)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [openModal, setOpenModal] = useState<'ai' | 'insights' | null>(null)
+  const [periodType, setPeriodType] = useState<PeriodType>('month')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   const role = useCurrentRole()
   usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
 
@@ -44,8 +59,51 @@ export default function DashboardPage() {
     setUpdatedAt(new Date().toLocaleString('ko-KR'))
   }, [])
 
-  const baseDefects = state.defects.filter(d => !d.deletedAt)
-  const categoryNameOf = (d: Defect) => state.categories.find(c => c.id === d.categoryId)?.name ?? null
+  // 조회기간 계산 — 집계 기준은 하자 발생일(firstOccurredAt)
+  function computePeriodRange(): { from: string | null; to: string | null; label: string } {
+    const now = new Date()
+    if (periodType === 'today') {
+      const t = toDateStr(now)
+      return { from: t, to: t, label: '오늘' }
+    }
+    if (periodType === 'week') {
+      const day = now.getDay() // 0=일요일
+      const diffToMonday = day === 0 ? 6 : day - 1
+      const monday = new Date(now); monday.setDate(now.getDate() - diffToMonday)
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+      return { from: toDateStr(monday), to: toDateStr(sunday), label: '이번 주' }
+    }
+    if (periodType === 'month') {
+      const from = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      const to = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(lastDay)}`
+      return { from, to, label: '이번 달' }
+    }
+    if (periodType === 'year') {
+      return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31`, label: '올해' }
+    }
+    if (periodType === 'custom') {
+      if (!customFrom || !customTo) return { from: null, to: null, label: '사용자 지정 (시작·종료일을 선택하세요)' }
+      return { from: customFrom, to: customTo, label: `${customFrom} ~ ${customTo}` }
+    }
+    return { from: null, to: null, label: '전체 기간' }
+  }
+
+  const period = computePeriodRange()
+
+  const nonDeleted = state.defects.filter(d => !d.deletedAt)
+  const missingOccurredAtCount = nonDeleted.filter(d => !d.firstOccurredAt).length
+
+  // 대시보드 전체(카테고리별 건수·달력·미완결·비용·Top3)가 이 조회기간 필터를 공통으로 사용한다.
+  // 발생일(firstOccurredAt)이 없는 하자는 어느 기간에도 속할 수 없으므로 집계에서 제외하고,
+  // missingOccurredAtCount로 별도 안내한다.
+  const baseDefects = nonDeleted.filter(d => {
+    if (!d.firstOccurredAt) return false
+    const occ = d.firstOccurredAt.slice(0, 10)
+    if (period.from && occ < period.from) return false
+    if (period.to && occ > period.to) return false
+    return true
+  })
 
   // 카테고리 탭 — 하드코딩 없이 실제 하자 데이터에서 카테고리별 건수를 집계해 동적으로 생성한다.
   // [전체]는 항상 맨 앞 고정, 나머지는 발생 건수 내림차순(동률이면 이름 가나다순), 0건은 숨김.
@@ -79,13 +137,10 @@ export default function DashboardPage() {
     d.status !== 'completed' && (d.status === 'in_progress' || d.status === 'recheck_needed' || d.status === 'action_done' || isOverdue(d))
   )
 
-  // 카드2: 이번 달 집행 비용
-  const now = new Date()
-  const mm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const thisMonthDefects = defects.filter(d => (d.firstOccurredAt ?? d.createdAt)?.startsWith(mm))
-  const thisMonthOwnCost = thisMonthDefects.filter(d => costBucket(d) === '우리측').reduce((s, d) => s + (d.totalCost || 0), 0)
-  const thisMonthClaimCost = thisMonthDefects.filter(d => costBucket(d) === '타업체').reduce((s, d) => s + (d.totalCost || 0), 0)
-  const thisMonthTotalCost = thisMonthDefects.reduce((s, d) => s + (d.totalCost || 0), 0)
+  // 카드2: 조회기간 집행 비용 (defects는 이미 조회기간+카테고리 탭이 반영된 집합)
+  const periodOwnCost = defects.filter(d => costBucket(d) === '우리측').reduce((s, d) => s + (d.totalCost || 0), 0)
+  const periodClaimCost = defects.filter(d => costBucket(d) === '타업체').reduce((s, d) => s + (d.totalCost || 0), 0)
+  const periodTotalCost = defects.reduce((s, d) => s + (d.totalCost || 0), 0)
 
   // 오늘 우선처리 Top3
   const sevRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
@@ -94,103 +149,17 @@ export default function DashboardPage() {
     .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9) || b.recurrenceCount - a.recurrenceCount)
     .slice(0, 3)
 
-  const actionPlan = generateActionPlanOpinion(defects, state.files, state.floorPlans)
-
-  // ── AI 분석 인사이트 데이터 (탭 필터 반영) ──────────────────────────────
-
-  const causeCounts: Record<string, { count: number; totalCost: number; recurrences: number }> = {}
-  defects.forEach(d => {
-    const cause = d.causeCategory ?? (categoryNameOf(d) ?? '미분류')
-    if (!causeCounts[cause]) causeCounts[cause] = { count: 0, totalCost: 0, recurrences: 0 }
-    causeCounts[cause].count++
-    causeCounts[cause].totalCost += d.totalCost
-    causeCounts[cause].recurrences += d.recurrenceCount
-  })
-  const topCauses = Object.entries(causeCounts)
-    .sort((a, b) => (b[1].count + b[1].recurrences) - (a[1].count + a[1].recurrences))
-    .slice(0, 10)
-  const topCausesMax = Math.max(1, ...topCauses.map(([, v]) => v.count + v.recurrences))
-
-  const floorMap: Record<string, { count: number; cost: number; name: string }> = {}
-  defects.forEach(d => {
-    const fp = state.floorPlans.find(f => f.id === d.floorPlanId)
-    const key = fp?.name ?? '층 미지정'
-    if (!floorMap[key]) floorMap[key] = { count: 0, cost: 0, name: key }
-    floorMap[key].count++
-    floorMap[key].cost += d.totalCost
-  })
-  const floorRanking = Object.values(floorMap).sort((a, b) => b.count - a.count)
-  const floorMax = Math.max(1, ...floorRanking.map(f => f.count))
-
-  const catCostData = state.categories.map(c => {
-    const cDefs = defects.filter(d => d.categoryId === c.id)
-    const costDefs = cDefs.filter(d => d.totalCost > 0)
-    const catTotal = cDefs.reduce((s, d) => s + d.totalCost, 0)
-    const avg = costDefs.length > 0 ? Math.round(catTotal / costDefs.length) : 0
-    return { ...c, catTotal, avg, count: cDefs.length, costCount: costDefs.length }
-  }).filter(c => c.count > 0).sort((a, b) => b.catTotal - a.catTotal)
-  const catCostMax = Math.max(1, ...catCostData.map(c => c.catTotal))
-
-  const recurredDefs = defects.filter(d => d.recurrenceCount > 0).sort((a, b) => b.recurrenceCount - a.recurrenceCount)
-  const recurRateByCat = state.categories.map(c => {
-    const all = defects.filter(d => d.categoryId === c.id)
-    const recurred = all.filter(d => d.recurrenceCount > 0)
-    return { ...c, total: all.length, recurred: recurred.length, rate: all.length > 0 ? Math.round(recurred.length / all.length * 100) : 0 }
-  }).filter(c => c.total > 0).sort((a, b) => b.rate - a.rate)
-
-  const zoneMap: Record<string, { defects: number; cost: number; critical: number; name: string }> = {}
-  defects.forEach(d => {
-    const fp = state.floorPlans.find(f => f.id === d.floorPlanId)
-    const zone = fp?.name ?? '미확인'
-    if (!zoneMap[zone]) zoneMap[zone] = { defects: 0, cost: 0, critical: 0, name: zone }
-    zoneMap[zone].defects++
-    zoneMap[zone].cost += d.totalCost
-    if (d.severity === 'critical' || d.severity === 'high') zoneMap[zone].critical++
-  })
-  const zones = Object.values(zoneMap).map(z => ({ ...z, score: z.defects + z.critical * 2 })).sort((a, b) => b.score - a.score)
-  const zoneMax = Math.max(1, ...zones.map(z => z.score))
-
-  const monthsWithData = new Set(
-    defects.filter(d => d.totalCost > 0 && d.firstOccurredAt).map(d => d.firstOccurredAt!.slice(0, 7))
-  ).size || 1
-  const avgMonthly = Math.round(defects.reduce((s, d) => s + (d.totalCost || 0), 0) / monthsWithData)
-  const pendingPredCost = defects.filter(d => d.status !== 'completed' && d.predictedCostAvg != null).reduce((s, d) => s + (d.predictedCostAvg ?? 0), 0)
-  const openCount = defects.filter(d => d.status !== 'completed').length
-  const forecast3m = Math.round(avgMonthly * 3 + pendingPredCost * 0.5)
-  const forecast6m = Math.round(avgMonthly * 6 + pendingPredCost * 0.8)
-  const forecast12m = Math.round(avgMonthly * 12 + pendingPredCost * 1.2)
-
-  const locationCounts: Record<string, { count: number; recurring: boolean }> = {}
-  state.defectLocations.filter(l => defects.some(d => d.id === l.defectId)).forEach(l => {
-    const key = l.label?.trim() || null
-    if (!key) return
-    const d = defects.find(x => x.id === l.defectId)
-    if (!locationCounts[key]) locationCounts[key] = { count: 0, recurring: false }
-    locationCounts[key].count++
-    if (d && isRecurring(d)) locationCounts[key].recurring = true
-  })
-  const topLocations = Object.entries(locationCounts).sort((a, b) => b[1].count - a[1].count).slice(0, 10)
-  const topLocationsMax = Math.max(1, ...topLocations.map(([, v]) => v.count))
-
-  const costRiskTop5 = [...defects]
-    .filter(d => d.recurrenceCount > 0)
-    .sort((a, b) => (b.totalCost * (b.recurrenceCount + 1)) - (a.totalCost * (a.recurrenceCount + 1)))
-    .slice(0, 5)
-
   const card: React.CSSProperties = { background: '#fff', border: '1px solid #e3e8ef', borderRadius: 10, boxShadow: '0 1px 3px rgba(10,37,64,0.05)', overflow: 'hidden' }
-  const aiCard: React.CSSProperties = { background: '#fff', border: '1px solid rgba(99,91,255,.2)', borderRadius: 10, boxShadow: '0 1px 4px rgba(99,91,255,.06)', overflow: 'hidden' }
-  const aiCardHeader: React.CSSProperties = { padding: '10px 14px 8px', borderBottom: '1px solid rgba(99,91,255,.1)', background: 'linear-gradient(135deg,rgba(99,91,255,.04),rgba(99,91,255,.01))' }
 
-  function resetStorage() {
-    localStorage.removeItem('hajaSys2')
-    location.reload()
+  // 하자 데이터(localStorage)는 절대 지우지 않는다 — 조회기간/카테고리 탭/캘린더 선택 날짜 같은
+  // 조회 필터 상태만 기본값(이번 달)으로 되돌린다.
+  function resetFilters() {
+    setActiveTab(ALL_TAB_KEY)
+    setSelectedDate(null)
+    setPeriodType('month')
+    setCustomFrom('')
+    setCustomTo('')
   }
-
-  const topBtn = (accent: string, bg: string): React.CSSProperties => ({
-    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999,
-    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-    border: `1.5px solid ${accent}55`, background: bg, color: accent,
-  })
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -198,17 +167,10 @@ export default function DashboardPage() {
       <div style={{ padding: '14px 20px', borderBottom: '1px solid #e3e8ef', background: '#fff', position: 'sticky', top: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ fontSize: '1rem', fontWeight: 700, color: '#0a2540' }}>대시보드</h1>
-          <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 1 }}>업데이트 {updatedAt}</div>
+          <div style={{ fontSize: '0.68rem', color: '#697386', marginTop: 1 }}>업데이트 {updatedAt} · 조회기간: {period.label}</div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button onClick={() => setOpenModal('ai')} style={topBtn('#4F46E5', 'rgba(99,91,255,.07)')}>
-            <i className="fa-solid fa-wand-magic-sparkles" /> AI 종합의견
-          </button>
-          <button onClick={() => setOpenModal('insights')} style={topBtn('#1D4ED8', 'rgba(37,99,235,.06)')}>
-            <i className="fa-solid fa-chart-line" /> 심화 분석
-          </button>
-          <span style={{ width: 1, height: 18, background: '#e3e8ef', margin: '0 2px' }} />
-          <button onClick={resetStorage} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}>
+          <button onClick={resetFilters} title="조회기간·카테고리 탭·날짜 선택만 초기화합니다. 하자 데이터는 지워지지 않습니다." style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}>
             <i className="fa-solid fa-rotate" /> 초기화
           </button>
           {canRegister(role) && (
@@ -219,8 +181,38 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* 조회기간 선택 */}
+      <div style={{ position: 'sticky', top: 53, zIndex: 41, background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+        {PERIOD_OPTIONS.map(opt => (
+          <button
+            key={opt.key}
+            onClick={() => setPeriodType(opt.key)}
+            style={{
+              padding: '5px 12px', borderRadius: 999, fontSize: '0.73rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              border: periodType === opt.key ? '1.5px solid #635bff' : '1.5px solid #e3e8ef',
+              background: periodType === opt.key ? '#635bff' : '#fff',
+              color: periodType === opt.key ? '#fff' : '#425466',
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+        {periodType === 'custom' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #e3e8ef', fontSize: '0.73rem', fontFamily: 'inherit' }} />
+            <span style={{ color: '#b0bac6' }}>~</span>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #e3e8ef', fontSize: '0.73rem', fontFamily: 'inherit' }} />
+          </div>
+        )}
+        {missingOccurredAtCount > 0 && (
+          <span style={{ marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 600, color: '#B06B1A', background: '#FFF7ED', padding: '4px 9px', borderRadius: 6, whiteSpace: 'nowrap' }}>
+            <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 4 }} />발생일 미입력 {missingOccurredAtCount}건 (집계 제외)
+          </span>
+        )}
+      </div>
+
       {/* Category Tabs — 실데이터 기반 동적 생성, 가로 스크롤 */}
-      <div style={{ position: 'sticky', top: 53, zIndex: 40, background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '8px 20px' }}>
+      <div style={{ position: 'sticky', top: 97, zIndex: 40, background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '8px 20px' }}>
         <CategoryTabBar tabs={categoryTabs} activeKey={effectiveActiveTab} onSelect={setActiveTab} />
       </div>
 
@@ -245,12 +237,12 @@ export default function DashboardPage() {
 
             <div style={{ ...card, padding: '14px 16px', position: 'relative' }}>
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#16A34A', borderRadius: '10px 10px 0 0' }} />
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#697386', marginBottom: 6 }}>💰 이번 달 집행 비용</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.03em', lineHeight: 1 }}>{fmtKRW(thisMonthTotalCost)}</div>
-              {(thisMonthOwnCost > 0 || thisMonthClaimCost > 0) && (
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#697386', marginBottom: 6 }}>💰 {period.label} 집행 비용</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.03em', lineHeight: 1 }}>{fmtKRW(periodTotalCost)}</div>
+              {(periodOwnCost > 0 || periodClaimCost > 0) && (
                 <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-                  {thisMonthOwnCost > 0 && <span style={{ fontSize: '0.68rem', color: '#697386' }}>우리측 부담 <strong style={{ color: '#425466' }}>{fmtKRW(thisMonthOwnCost)}</strong></span>}
-                  {thisMonthClaimCost > 0 && <span style={{ fontSize: '0.68rem', color: '#697386' }}>타업체 청구 <strong style={{ color: '#425466' }}>{fmtKRW(thisMonthClaimCost)}</strong></span>}
+                  {periodOwnCost > 0 && <span style={{ fontSize: '0.68rem', color: '#697386' }}>우리측 부담 <strong style={{ color: '#425466' }}>{fmtKRW(periodOwnCost)}</strong></span>}
+                  {periodClaimCost > 0 && <span style={{ fontSize: '0.68rem', color: '#697386' }}>타업체 청구 <strong style={{ color: '#425466' }}>{fmtKRW(periodClaimCost)}</strong></span>}
                 </div>
               )}
             </div>
@@ -289,244 +281,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {openModal === 'ai' && (
-          <DashboardModal title="✨ AI 종합 의견" subtitle="Rule-Based 분석 · Action Plan" onClose={() => setOpenModal(null)}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div>
-                {actionPlan.headline.map((line, i) => (
-                  <div key={i} style={{ fontSize: '0.78rem', color: '#0a2540', lineHeight: 1.6, marginBottom: 2 }}>• {line}</div>
-                ))}
-              </div>
-              {actionPlan.immediateActions.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: COLORS.danger, marginBottom: 3 }}>즉시 조치 필요</div>
-                  {actionPlan.immediateActions.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
-                </div>
-              )}
-              {actionPlan.costRisk.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#B06B1A', marginBottom: 3 }}>비용/결제 리스크</div>
-                  {actionPlan.costRisk.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
-                </div>
-              )}
-              {actionPlan.recurringWarning.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#635bff', marginBottom: 3 }}>반복 발생 경고</div>
-                  {actionPlan.recurringWarning.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
-                </div>
-              )}
-              {actionPlan.approvalNeeded.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#0F7850', marginBottom: 3 }}>관리자 결재 필요</div>
-                  {actionPlan.approvalNeeded.map((t, i) => <div key={i} style={{ fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>· {t}</div>)}
-                </div>
-              )}
-            </div>
-          </DashboardModal>
-        )}
-
-        {openModal === 'insights' && (
-          <DashboardModal title="📊 심화 분석" subtitle="Rule-Based · 실시간 데이터 기반" onClose={() => setOpenModal(null)} wide>
-          <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 10 }}>
-            {topCauses.length > 0 && (
-              <div style={aiCard}>
-                <div style={aiCardHeader}><div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0a2540' }}>반복 발생 원인 TOP10</div></div>
-                <div style={{ padding: '10px 14px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {topCauses.map(([cause, v], i) => {
-                      const t = v.count + v.recurrences
-                      const pct = Math.round((t / topCausesMax) * 100)
-                      return (
-                        <div key={cause}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                            <span style={{ fontSize: '0.73rem', color: '#0a2540', fontWeight: i < 3 ? 600 : 400 }}>#{i + 1} {cause}</span>
-                            <span style={{ fontSize: '0.68rem', color: '#425466', fontWeight: 600 }}>{t}회</span>
-                          </div>
-                          <div style={{ height: 4, background: '#f0f4f8', borderRadius: 999 }}><div style={{ height: '100%', width: `${pct}%`, background: i < 3 ? '#635bff' : '#a5b4fc', borderRadius: 999 }} /></div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {floorRanking.length > 0 && (
-              <div style={aiCard}>
-                <div style={aiCardHeader}><div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0a2540' }}>시설별 고장 순위</div></div>
-                <div style={{ padding: '10px 14px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {floorRanking.slice(0, 6).map((f, i) => {
-                      const pct = Math.round((f.count / floorMax) * 100)
-                      return (
-                        <div key={f.name}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                            <span style={{ fontSize: '0.73rem', color: '#0a2540', fontWeight: i < 3 ? 600 : 400 }}>{['🥇', '🥈', '🥉'][i] ?? `#${i + 1}`} {f.name}</span>
-                            <span style={{ fontSize: '0.68rem', color: '#425466', fontWeight: 600 }}>{f.count}건 · {fmtKRW(f.cost)}</span>
-                          </div>
-                          <div style={{ height: 4, background: '#f0f4f8', borderRadius: 999 }}><div style={{ height: '100%', width: `${pct}%`, background: i < 3 ? '#059669' : '#6ee7b7', borderRadius: 999 }} /></div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {catCostData.length > 0 && (
-              <div style={aiCard}>
-                <div style={aiCardHeader}><div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0a2540' }}>분야별 비용 분석</div></div>
-                <div style={{ padding: '10px 14px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {catCostData.map((c, i) => {
-                      const pct = Math.round((c.catTotal / catCostMax) * 100)
-                      return (
-                        <div key={c.id}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                            <span style={{ fontSize: '0.73rem', color: '#0a2540' }}>{c.name} <span style={{ color: '#697386', fontSize: '0.65rem' }}>{c.count}건</span></span>
-                            <span style={{ fontSize: '0.68rem', color: '#425466', fontWeight: 600 }}>{fmtKRW(c.catTotal)}</span>
-                          </div>
-                          <div style={{ height: 4, background: '#f0f4f8', borderRadius: 999 }}><div style={{ height: '100%', width: `${pct}%`, background: i === 0 ? '#635bff' : '#a5b4fc', borderRadius: 999 }} /></div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {recurRateByCat.length > 0 && (
-              <div style={aiCard}>
-                <div style={aiCardHeader}><div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0a2540' }}>재발생 하자 분석</div></div>
-                <div style={{ padding: '10px 14px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: recurredDefs.length > 0 ? 8 : 0 }}>
-                    {recurRateByCat.map(c => (
-                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: '0.7rem', color: '#0a2540', minWidth: 44 }}>{c.name}</span>
-                        <div style={{ flex: 1, height: 4, background: '#f0f4f8', borderRadius: 999 }}><div style={{ height: '100%', width: `${c.rate}%`, background: c.rate >= 50 ? '#e11d48' : '#635bff', borderRadius: 999 }} /></div>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 600, color: c.rate >= 50 ? '#e11d48' : '#425466' }}>{c.rate}%</span>
-                      </div>
-                    ))}
-                  </div>
-                  {recurredDefs.slice(0, 3).map((d, i) => (
-                    <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: '#faf9ff', borderRadius: 6, marginBottom: 3, fontSize: '0.7rem' }}>
-                      <span style={{ color: '#0a2540' }}>#{i + 1} {d.title.slice(0, 16)}{d.title.length > 16 ? '…' : ''}</span>
-                      <span style={{ fontWeight: 700, color: '#635bff' }}>{d.recurrenceCount}회</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {zones.length > 0 && (
-              <div style={aiCard}>
-                <div style={aiCardHeader}><div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0a2540' }}>취약 구역 분석</div></div>
-                <div style={{ padding: '10px 14px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {zones.slice(0, 6).map((z, i) => {
-                      const pct = Math.round((z.score / zoneMax) * 100)
-                      const level = pct >= 75 ? { l: '위험', c: '#e11d48' } : pct >= 40 ? { l: '주의', c: '#d97706' } : { l: '양호', c: '#059669' }
-                      return (
-                        <div key={z.name}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                            <span style={{ fontSize: '0.73rem', color: '#0a2540' }}>{z.name} <span style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: 4, background: level.c + '18', color: level.c, fontWeight: 700 }}>{level.l}</span></span>
-                            <span style={{ fontSize: '0.68rem', color: '#425466', fontWeight: 600 }}>{z.defects}건</span>
-                          </div>
-                          <div style={{ height: 4, background: '#f0f4f8', borderRadius: 999 }}><div style={{ height: '100%', width: `${pct}%`, background: level.c, borderRadius: 999, opacity: 0.7 }} /></div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {(forecast3m > 0 || forecast6m > 0) && (
-              <div style={aiCard}>
-                <div style={aiCardHeader}><div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0a2540' }}>향후 예상 유지보수 비용</div></div>
-                <div style={{ padding: '10px 14px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
-                    {[{ l: '3개월', v: forecast3m, c: '#059669' }, { l: '6개월', v: forecast6m, c: '#d97706' }, { l: '12개월', v: forecast12m, c: '#635bff' }].map(f => (
-                      <div key={f.l} style={{ padding: '7px 6px', background: '#faf9ff', borderRadius: 6, textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.6rem', color: '#697386' }}>{f.l}</div>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: f.c }}>{fmtKRW(f.v)}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: '#697386' }}>월평균 {fmtKRW(avgMonthly)} · 진행중 예측비용 {fmtKRW(pendingPredCost)} · 미처리 {openCount}건</div>
-                </div>
-              </div>
-            )}
-
-            {topLocations.length > 0 && (
-              <div style={aiCard}>
-                <div style={aiCardHeader}><div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0a2540' }}>위치별 하자 발생 Top10</div></div>
-                <div style={{ padding: '10px 14px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {topLocations.map(([label, v], i) => {
-                      const pct = Math.round((v.count / topLocationsMax) * 100)
-                      return (
-                        <Link key={label} href={`/defects?search=${encodeURIComponent(label)}`} style={{ textDecoration: 'none', display: 'block' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                            <span style={{ fontSize: '0.73rem', color: '#0a2540', fontWeight: i < 3 ? 600 : 400 }}>#{i + 1} {label} {v.recurring && <span style={{ fontSize: '0.6rem', color: COLORS.danger }}>반복</span>}</span>
-                            <span style={{ fontSize: '0.68rem', color: '#425466', fontWeight: 600 }}>{v.count}건</span>
-                          </div>
-                          <div style={{ height: 4, background: '#f0f4f8', borderRadius: 999 }}><div style={{ height: '100%', width: `${pct}%`, background: i < 3 ? '#635bff' : '#a5b4fc', borderRadius: 999 }} /></div>
-                        </Link>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {costRiskTop5.length > 0 && (
-            <div style={{ ...aiCard, marginTop: 10 }}>
-              <div style={aiCardHeader}><div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0a2540' }}>비용 증가 위험 항목 Top5</div></div>
-              <div>
-                {costRiskTop5.map((d, i) => (
-                  <Link key={d.id} href={`/defects/${d.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', textDecoration: 'none', borderBottom: '1px solid #f7f8fa' }}>
-                    <span style={{ fontSize: '0.68rem', color: '#635bff', fontWeight: 700 }}>#{i + 1}</span>
-                    <span style={{ fontSize: '0.75rem', color: '#0a2540', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
-                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: COLORS.danger, background: '#FEF2F2', padding: '1px 6px', borderRadius: 4 }}>재발{d.recurrenceCount}회</span>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0a2540' }}>{fmtKRW(d.totalCost)}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-          </DashboardModal>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function DashboardModal({
-  title, subtitle, onClose, children, wide,
-}: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(10,37,64,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div style={{ width: wide ? 'min(1100px,96vw)' : 'min(720px,94vw)', background: '#fff', borderRadius: 14, boxShadow: '0 12px 40px rgba(10,37,64,.25)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #eef0f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div>
-            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0a2540' }}>{title}</div>
-            {subtitle && <div style={{ fontSize: '0.65rem', color: '#697386', marginTop: 2 }}>{subtitle}</div>}
-          </div>
-          <button
-            onClick={onClose}
-            style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #e3e8ef', background: '#fff', cursor: 'pointer', color: '#697386', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-        <div style={{ padding: 16, overflowY: 'auto' }}>
-          {children}
-        </div>
       </div>
     </div>
   )
