@@ -333,7 +333,7 @@ function DefectsPageInner() {
             <thead>
               <tr style={{ background: '#fafbfc', borderBottom: '1px solid #e3e8ef' }}>
                 {[
-                  '종결여부', '발생일', '분야/명', '사진대지', '외주업체', '처리비용', '결제증빙/수단', '상태', '위치', '작업',
+                  '종결여부', '발생일', '조치예정일', '분야/명', '사진대지', '외주업체', '처리비용', '결제증빙/수단', '상태', '위치', '작업',
                 ].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '7px 12px', fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
@@ -342,7 +342,7 @@ function DefectsPageInner() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={11}>
                     <EmptyState
                       icon="fa-solid fa-inbox"
                       message={filterActive ? '조건에 맞는 하자가 없습니다.' : '등록된 하자가 없습니다.'}
@@ -388,6 +388,11 @@ function DefectsPageInner() {
                     {/* 발생일 */}
                     <td style={{ padding: '7px 12px', verticalAlign: 'middle', fontSize: '0.74rem', color: '#697386', whiteSpace: 'nowrap' }}>
                       {fmtDate(d.firstOccurredAt)}
+                    </td>
+
+                    {/* 조치예정일 */}
+                    <td style={{ padding: '7px 12px', verticalAlign: 'middle', fontSize: '0.74rem', whiteSpace: 'nowrap', color: overdue ? COLORS.warning : '#697386', fontWeight: overdue ? 700 : 400 }}>
+                      {d.expectedCompletionDate ? fmtDate(d.expectedCompletionDate) : '-'}
                     </td>
 
                     {/* 분야/명 */}

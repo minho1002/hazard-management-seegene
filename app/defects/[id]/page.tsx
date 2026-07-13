@@ -362,11 +362,12 @@ export default function DefectDetailPage() {
                   ['협력업체', vendor?.name || '미지정'],
                   ['비용유형', COST_LABELS[defect.costType] || defect.costType],
                   ['최초발생', fmtDate(defect.firstOccurredAt)],
+                  ['조치예정일', defect.expectedCompletionDate ? fmtDate(defect.expectedCompletionDate) : '-'],
                   ['최근발생', fmtDate(defect.lastOccurredAt)],
                   ['재발횟수', `${defect.recurrenceCount || 0}회`],
                   ['누적비용', fmtKRW(defect.totalCost)],
                 ].map(([k, v], i) => (
-                  <div key={k as string} style={{ padding: '12px 16px', borderBottom: i < 8 ? '1px solid #f0f4f8' : 'none', borderRight: i % 2 === 0 ? '1px solid #f0f4f8' : 'none' }}>
+                  <div key={k as string} style={{ padding: '12px 16px', borderBottom: i < 10 ? '1px solid #f0f4f8' : 'none', borderRight: i % 2 === 0 && i < 10 ? '1px solid #f0f4f8' : 'none' }}>
                     <dt style={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#697386', marginBottom: 3 }}>{k}</dt>
                     <dd style={{ fontSize: '0.82rem', fontWeight: 600, color: k === '누적비용' ? '#0f7850' : '#0a2540' }}>{v as string}</dd>
                   </div>
