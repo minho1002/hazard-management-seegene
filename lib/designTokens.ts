@@ -66,7 +66,13 @@ function daysSince(dateStr: string | null): number {
 }
 
 export function isOverdue(defect: Defect): boolean {
-  if (defect.status === 'completed' || defect.status === 'hold') return false
+  // 조치가 이미 완료된 건(action_done)·최종완료·보류 건은 "조치 지연" 대상이 아니다.
+  if (defect.status === 'completed' || defect.status === 'hold' || defect.status === 'action_done') return false
+  // 예상완료일이 지정된 경우 그 날짜를 기준으로 지연 여부를 판단하고,
+  // 지정되지 않은 경우에만 심각도별 기본 임계값(발생일 기준)을 사용한다.
+  if (defect.expectedCompletionDate) {
+    return daysSince(defect.expectedCompletionDate) > 0
+  }
   const threshold = OVERDUE_DAYS_BY_SEVERITY[defect.severity as SeverityKey] ?? OVERDUE_DAYS_BY_SEVERITY.medium
   return daysSince(defect.firstOccurredAt) >= threshold
 }

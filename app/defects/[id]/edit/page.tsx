@@ -41,6 +41,7 @@ export default function EditDefectPage() {
     assignedVendorId: defectRaw?.assignedVendorId ?? ('' as string | number),
     managerName: defectRaw?.managerName ?? '김관리',
     firstOccurredAt: defectRaw?.firstOccurredAt ?? new Date().toISOString().slice(0, 10),
+    expectedCompletionDate: defectRaw?.expectedCompletionDate ?? '',
   }))
 
   if (!defectRaw) {
@@ -99,6 +100,10 @@ export default function EditDefectPage() {
 
   function submit() {
     if (form.categoryId === '__custom__' && !customCategoryName.trim()) { alert('카테고리를 입력하세요.'); return }
+    if (form.expectedCompletionDate && form.firstOccurredAt && form.expectedCompletionDate < form.firstOccurredAt) {
+      alert('예상완료일은 발생일보다 이후여야 합니다.')
+      return
+    }
     const categoryId = form.categoryId === '__custom__'
       ? addCategory(customCategoryName)
       : (form.categoryId ? Number(form.categoryId) : null)
@@ -117,6 +122,7 @@ export default function EditDefectPage() {
       assignedVendorId: form.assignedVendorId ? Number(form.assignedVendorId) : null,
       managerName: form.managerName || '김관리',
       firstOccurredAt: form.firstOccurredAt || null,
+      expectedCompletionDate: form.expectedCompletionDate || null,
     })
     router.push(`/defects/${defect.id}`)
   }
@@ -201,6 +207,10 @@ export default function EditDefectPage() {
                   <div>
                     <label style={labelCls}>발생일</label>
                     <input type="date" style={inputCls} value={form.firstOccurredAt ?? ''} onChange={e => setField('firstOccurredAt', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>예상완료일</label>
+                    <input type="date" style={inputCls} value={form.expectedCompletionDate ?? ''} onChange={e => setField('expectedCompletionDate', e.target.value)} />
                   </div>
                   <div>
                     <label style={labelCls}>신고자</label>

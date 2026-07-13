@@ -20,6 +20,12 @@ function toDateStr(d: Date): string {
 }
 
 function overdueSinceDate(d: Defect): string | null {
+  // 예상완료일이 있으면 그 다음날부터 지연으로 표시하고, 없으면 발생일 + 심각도별 기본 임계값을 사용한다.
+  if (d.expectedCompletionDate) {
+    const dt = new Date(d.expectedCompletionDate)
+    dt.setDate(dt.getDate() + 1)
+    return toDateStr(dt)
+  }
   if (!d.firstOccurredAt) return null
   const threshold = OVERDUE_DAYS_BY_SEVERITY[d.severity as SeverityKey] ?? OVERDUE_DAYS_BY_SEVERITY.medium
   const dt = new Date(d.firstOccurredAt)
