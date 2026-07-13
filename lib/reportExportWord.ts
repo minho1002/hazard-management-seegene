@@ -1,6 +1,7 @@
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   Table, TableRow, TableCell, WidthType, ShadingType, PageOrientation,
+  Header, Footer, PageNumber, AlignmentType,
 } from 'docx'
 import type { GeneratedReport, ReportSection } from '@/lib/aiReportService'
 import { fmtReportFilename } from '@/lib/reportExportHtml'
@@ -88,6 +89,30 @@ export function buildReportDocxDocument(report: GeneratedReport): Document {
           size: { orientation: PageOrientation.PORTRAIT, width: 11906, height: 16838 },
           margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 },
         },
+      },
+      headers: {
+        default: new Header({
+          children: [
+            new Paragraph({
+              children: [new TextRun({ text: report.title, bold: true, size: 16, color: '697386' })],
+            }),
+          ],
+        }),
+      },
+      footers: {
+        default: new Footer({
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new TextRun({ text: `${report.preparedBy} · 생성: ${report.generatedAt} · 페이지 `, size: 16, color: '697386' }),
+                new TextRun({ children: [PageNumber.CURRENT], size: 16, color: '697386' }),
+                new TextRun({ text: ' / ', size: 16, color: '697386' }),
+                new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16, color: '697386' }),
+              ],
+            }),
+          ],
+        }),
       },
       children,
     }],
