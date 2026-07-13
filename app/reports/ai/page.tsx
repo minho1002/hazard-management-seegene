@@ -15,6 +15,7 @@ import { COLORS } from '@/lib/designTokens'
 import { downloadReportPDF } from '@/lib/reportExportPdf'
 import { downloadReportExcel } from '@/lib/reportExportExcel'
 import { downloadReportWord } from '@/lib/reportExportWord'
+import { ReportToast, type ToastMessage } from '@/components/common/ReportToast'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -193,6 +194,7 @@ export default function AiReportPage() {
   const [pdfLoading, setPdfLoading] = useState(false)
   const [wordLoading, setWordLoading] = useState(false)
   const [excelLoading, setExcelLoading] = useState(false)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
 
   const now = new Date()
   const [periodType, setPeriodType] = useState<ReportPeriodType>('월별')
@@ -276,9 +278,10 @@ export default function AiReportPage() {
     setPdfLoading(true)
     try {
       await downloadReportPDF(report)
+      setToast({ type: 'success', text: 'PDF 다운로드가 완료되었습니다.' })
     } catch (err) {
       console.error(err)
-      alert('PDF 생성 중 오류가 발생했습니다.')
+      setToast({ type: 'error', text: 'PDF 생성 중 오류가 발생했습니다.' })
     } finally {
       setPdfLoading(false)
     }
@@ -289,9 +292,10 @@ export default function AiReportPage() {
     setExcelLoading(true)
     try {
       await downloadReportExcel(report)
+      setToast({ type: 'success', text: 'Excel 다운로드가 완료되었습니다.' })
     } catch (err) {
       console.error(err)
-      alert('Excel 생성 중 오류가 발생했습니다.')
+      setToast({ type: 'error', text: 'Excel 생성 중 오류가 발생했습니다.' })
     } finally {
       setExcelLoading(false)
     }
@@ -302,9 +306,10 @@ export default function AiReportPage() {
     setWordLoading(true)
     try {
       await downloadReportWord(report)
+      setToast({ type: 'success', text: 'Word 다운로드가 완료되었습니다.' })
     } catch (err) {
       console.error(err)
-      alert('Word 생성 중 오류가 발생했습니다.')
+      setToast({ type: 'error', text: 'Word 생성 중 오류가 발생했습니다.' })
     } finally {
       setWordLoading(false)
     }
@@ -654,6 +659,7 @@ export default function AiReportPage() {
           </div>
         )}
       </div>
+      <ReportToast toast={toast} onClose={() => setToast(null)} />
     </div>
   )
 }
