@@ -93,7 +93,7 @@ function filterDefectsForReport(type: ReportType, input: ReportInput): Defect[] 
 function periodFilenameSuffix(period: ReportPeriod): string {
   if (period.type === '전체') return '전체기간'
   if (period.type === '연도별') return `${(period.from ?? '').slice(0, 4)}년`
-  if (period.type === '월별') return `${(period.from ?? '').slice(0, 4)}년_${(period.from ?? '').slice(5, 7)}월`
+  if (period.type === '월별') return `${(period.from ?? '').slice(0, 4)}-${(period.from ?? '').slice(5, 7)}`
   if (period.type === '일별') return period.from ?? '전체기간'
   return `${period.from ?? ''}_${period.to ?? ''}`
 }
