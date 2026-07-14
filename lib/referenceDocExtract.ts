@@ -1,3 +1,4 @@
+import './pdfDomPolyfills'
 import { PDFParse } from 'pdf-parse'
 import * as mammoth from 'mammoth'
 import * as XLSX from 'xlsx'
