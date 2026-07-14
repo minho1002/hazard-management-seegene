@@ -9,7 +9,7 @@ import DefectPhotos from '@/components/defects/DefectPhotos'
 import FloorLocationMarkers from '@/components/defects/FloorLocationMarkers'
 import StatusBadge from '@/components/ui/StatusBadge'
 import SeverityBadge from '@/components/ui/SeverityBadge'
-import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey } from '@/lib/designTokens'
+import { isOverdue, isRecurring, COLORS, STATUS_FLOW, STATUS_META, type StatusKey, getCostDiff, getCostStatus, COST_STATUS_META } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canFinalizeClassification as canFinalizeClassificationFn, canConfirmRecurring, canDelete, canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
@@ -163,7 +163,8 @@ export default function DefectDetailPage() {
 
   function handleStatusSelect(target: string) {
     if (target === 'action_done') {
-      setActionDoneForm({ actionContent: defect.lastActionContent ?? '', actualCost: '' })
+      // 등록 시 입력해둔 예상 처리비용을 실제(확정) 비용의 초기값으로 제안 — 필요시 수정 후 확정
+      setActionDoneForm({ actionContent: defect.lastActionContent ?? '', actualCost: defect.estimatedCost != null ? String(defect.estimatedCost) : '' })
       setShowActionDoneModal(true)
       return
     }
@@ -341,8 +342,17 @@ export default function DefectDetailPage() {
         </div>
 
         {/* 판단 근거 */}
-        {(isOverdue(defect) || defect.recurrenceCount > 0 || defect.costType !== 'our') && (
+        {(isOverdue(defect) || defect.recurrenceCount > 0 || defect.costType !== 'our' || getCostStatus(defect)) && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+            {getCostStatus(defect) && (() => {
+              const cs = getCostStatus(defect)!
+              const meta = COST_STATUS_META[cs]
+              return (
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: meta.color, background: meta.bg, padding: '5px 10px', borderRadius: 999, border: `1px solid ${meta.color}33` }}>
+                  💵 비용 {meta.label}
+                </span>
+              )
+            })()}
             {isOverdue(defect) && (
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: COLORS.warning, background: '#FFF7ED', padding: '5px 10px', borderRadius: 999, border: '1px solid #FED7AA' }}>
                 🔶 지연 발생 ({defect.firstOccurredAt ? Math.floor((Date.now() - new Date(defect.firstOccurredAt).getTime()) / 86400000) : 0}일 경과)
@@ -380,11 +390,23 @@ export default function DefectDetailPage() {
                   ['조치예정일', defect.expectedCompletionDate ? fmtDate(defect.expectedCompletionDate) : '-'],
                   ['최근발생', fmtDate(defect.lastOccurredAt)],
                   ['재발횟수', `${defect.recurrenceCount || 0}회`],
-                  ['누적비용', fmtKRW(defect.totalCost)],
+                  ['예상비용', defect.estimatedCost != null ? fmtKRW(defect.estimatedCost) : '-'],
+                  ['확정비용', defect.finalCost != null ? fmtKRW(defect.finalCost) : (defect.totalCost > 0 ? fmtKRW(defect.totalCost) : '-')],
+                  ['예상 대비 차액', (() => {
+                    const diff = getCostDiff(defect)
+                    if (diff == null) return '-'
+                    return `${diff > 0 ? '+' : ''}${fmtKRW(diff)}`
+                  })()],
+                  ['비용 확정일', defect.costConfirmedAt ? fmtDate(defect.costConfirmedAt) : '-'],
                 ].map(([k, v], i) => (
-                  <div key={k as string} style={{ padding: '12px 16px', borderBottom: i < 10 ? '1px solid #f0f4f8' : 'none', borderRight: i % 2 === 0 && i < 10 ? '1px solid #f0f4f8' : 'none' }}>
+                  <div key={k as string} style={{ padding: '12px 16px', borderBottom: i < 12 ? '1px solid #f0f4f8' : 'none', borderRight: i % 2 === 0 && i < 12 ? '1px solid #f0f4f8' : 'none' }}>
                     <dt style={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#697386', marginBottom: 3 }}>{k}</dt>
-                    <dd style={{ fontSize: '0.82rem', fontWeight: 600, color: k === '누적비용' ? '#0f7850' : '#0a2540' }}>{v as string}</dd>
+                    <dd style={{
+                      fontSize: '0.82rem', fontWeight: 600,
+                      color: k === '확정비용' ? '#0f7850'
+                        : k === '예상 대비 차액' ? (typeof v === 'string' && v.startsWith('+') ? '#DC2626' : (v !== '-' ? '#0f7850' : '#0a2540'))
+                        : '#0a2540',
+                    }}>{v as string}</dd>
                   </div>
                 ))}
               </div>
@@ -839,6 +861,7 @@ export default function DefectDetailPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>실제 비용 (원)</label>
                 <input type="number" style={modalInputStyle} placeholder="0" value={actionDoneForm.actualCost} onChange={e => setActionDoneForm(f => ({ ...f, actualCost: e.target.value }))} />
+                <span style={{ fontSize: '0.66rem', color: '#aab' }}>등록 시 입력한 예상비용으로 미리 채워집니다 — 확정 금액으로 수정 후 전환하면 "확정비용"으로 저장됩니다.</span>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>

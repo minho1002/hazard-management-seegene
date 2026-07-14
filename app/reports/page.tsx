@@ -10,7 +10,7 @@ import {
 import { Doughnut, Bar, Line } from 'react-chartjs-2'
 import * as XLSX from 'xlsx'
 import { useStore } from '@/lib/store'
-import { toLegacyBucket, STATUS_META } from '@/lib/designTokens'
+import { toLegacyBucket, STATUS_META, getDisplayCost } from '@/lib/designTokens'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Tooltip, Legend, Filler)
 
@@ -27,15 +27,16 @@ type DefectRow = {
   managerName: string | null
   recurrenceCount: number | null
   firstOccurredAt: string | null
-  totalCost: number
+  totalCost: number | null
+  costConfirmed: boolean
   categoryName: string | null
   categoryColor: string | null
   vendorName: string | null
 }
 
 type ApiData = {
-  summary: { total: number; open: number; inProgress: number; hold: number; completed: number; totalCost: number }
-  byCategory: { name: string; color: string; count: number; cost: number }[]
+  summary: { total: number; open: number; inProgress: number; hold: number; completed: number; totalCost: number; confirmedCost: number; pendingEstimatedCost: number }
+  byCategory: { name: string; color: string; count: number; cost: number; confirmedCost: number; pendingCost: number }[]
   bySeverity: { severity: string; count: number }[]
   monthly: { month: string; count: number; cost: number }[]
   defects: DefectRow[]
@@ -123,6 +124,11 @@ function fmtKRW(n: number | null | undefined): string {
   if (!n) return '0원'
   return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(n)
 }
+// 개별 하자 행의 처리비용 표시 — 값이 아예 없으면 '-', 있으면 확정/예상 여부를 표기한다(0원도 값으로 취급).
+function fmtCostCell(d: DefectRow): string {
+  if (d.totalCost == null) return '-'
+  return d.costConfirmed ? fmtKRW(d.totalCost) : `${fmtKRW(d.totalCost)}(예상)`
+}
 
 function getPeriodDates(p: string): { from: string; to: string } {
   const now = new Date()
@@ -158,7 +164,7 @@ function buildMonthsInRange(from: string, to: string, monthly: ApiData['monthly'
 
 function buildInsights(from: string, to: string, data: ApiData): string[] {
   const { summary, byCategory, defects } = data
-  const { total, completed: done, totalCost } = summary
+  const { total, completed: done, totalCost, confirmedCost, pendingEstimatedCost } = summary
   const insights: string[] = []
   insights.push(`보고 기간(${from} ~ ${to}) 내 총 ${total}건의 하자가 등록되었습니다.`)
   if (total > 0) {
@@ -167,7 +173,10 @@ function buildInsights(from: string, to: string, data: ApiData): string[] {
     if (topCat?.count > 0) insights.push(`'${topCat.name}' 카테고리가 ${topCat.count}건으로 가장 많이 발생했습니다.`)
     const critCount = defects.filter(d => d.severity === 'critical').length
     if (critCount > 0) insights.push(`심각도 '긴급' 하자 ${critCount}건은 즉각적인 조치가 필요합니다.`)
-    if (totalCost > 0) insights.push(`기간 내 누적 처리 비용은 총 ${fmtKRW(totalCost)}입니다.`)
+    if (totalCost > 0) {
+      insights.push(`기간 내 누적 처리 비용은 총 ${fmtKRW(totalCost)}이며, 이 중 확정비용은 ${fmtKRW(confirmedCost)}입니다.`)
+      if (pendingEstimatedCost > 0) insights.push(`아직 확정되지 않은 예상비용이 ${fmtKRW(pendingEstimatedCost)} 포함되어 있어, 실제 정산 금액은 달라질 수 있습니다.`)
+    }
     const recCount = defects.filter(d => (d.recurrenceCount ?? 0) > 0).length
     if (recCount > 0) insights.push(`재발 이력이 있는 하자 ${recCount}건에 대해 근본 원인 분석이 필요합니다.`)
   } else {
@@ -209,7 +218,7 @@ function buildA4HTML(p: ReportParams): string {
       <td><span class="rpt-cdot" style="background:${c.color}"></span>${c.name}</td>
       <td style="text-align:center;font-weight:700">${c.count}</td>
       <td><div class="rpt-bar-wrap"><div class="rpt-bar" style="width:${total ? Math.round(c.count / total * 100) : 0}%;background:${c.color}"></div></div><span class="rpt-pct">${total ? Math.round(c.count / total * 100) : 0}%</span></td>
-      <td style="text-align:right">${fmtKRW(c.cost)}</td>
+      <td style="text-align:right;font-size:7.5pt">확정 ${fmtKRW(c.confirmedCost)}${c.pendingCost > 0 ? ` · 예상 ${fmtKRW(c.pendingCost)}` : ''}</td>
     </tr>`).join('')
 
   const sevRows = p.sevData.map(s => `
@@ -254,7 +263,7 @@ function buildA4HTML(p: ReportParams): string {
         <td><span class="rpt-sev rpt-sev-${d.severity}">${SEV_LABELS[d.severity] ?? d.severity}</span></td>
         <td><span class="rpt-stat rpt-stat-${d.status}">${STAT_LABELS[d.status] ?? d.status}</span></td>
         <td style="white-space:nowrap;font-size:7.5pt">${d.firstOccurredAt?.slice(0, 10) ?? '-'}</td>
-        <td style="text-align:right;font-size:7.5pt">${d.totalCost ? fmtKRW(d.totalCost) : '-'}</td>
+        <td style="text-align:right;font-size:7.5pt">${fmtCostCell(d)}</td>
       </tr>`).join('')
     : `<tr><td colspan="8" style="text-align:center;color:#697386;padding:16px">해당 기간 내 하자 내역이 없습니다.</td></tr>`
 
@@ -279,7 +288,7 @@ function buildA4HTML(p: ReportParams): string {
       <div class="rpt-kpi kc"><div class="rpt-kpi-lbl">처리중</div><div class="rpt-kpi-v" style="color:#b06b1a">${p.summary.inProgress}</div><div class="rpt-kpi-u">건</div></div>
       <div class="rpt-kpi kf"><div class="rpt-kpi-lbl">보류</div><div class="rpt-kpi-v" style="color:#a16207">${p.summary.hold}</div><div class="rpt-kpi-u">건</div></div>
       <div class="rpt-kpi kd"><div class="rpt-kpi-lbl">완료</div><div class="rpt-kpi-v" style="color:#0f7850">${p.summary.completed}</div><div class="rpt-kpi-u">건</div></div>
-      <div class="rpt-kpi ke"><div class="rpt-kpi-lbl">총 비용</div><div class="rpt-kpi-v" style="font-size:13pt;color:#be1044">${fmtKRW(p.summary.totalCost)}</div><div class="rpt-kpi-u">원</div></div>
+      <div class="rpt-kpi ke"><div class="rpt-kpi-lbl">총 비용</div><div class="rpt-kpi-v" style="font-size:13pt;color:#be1044">${fmtKRW(p.summary.totalCost)}</div><div class="rpt-kpi-u" style="font-size:6.5pt">확정 ${fmtKRW(p.summary.confirmedCost)}${p.summary.pendingEstimatedCost > 0 ? ` · 예상 ${fmtKRW(p.summary.pendingEstimatedCost)}` : ''}</div></div>
     </div>
   </div>
   <hr class="rpt-rule-thin">
@@ -333,14 +342,24 @@ function buildApiData(state: ReturnType<typeof useStore>['state'], from: string,
   const inProgress = filtered.filter(d => toLegacyBucket(d.status) === 'in_progress').length
   const hold = filtered.filter(d => toLegacyBucket(d.status) === 'hold').length
   const completed = filtered.filter(d => toLegacyBucket(d.status) === 'completed').length
-  const totalCost = filtered.reduce((s, d) => s + (d.totalCost || 0), 0)
+  // 확정비용(finalCost 우선, 없으면 totalCost)과 예상비용(미확정)을 구분 집계한다.
+  const effCost = (d: (typeof filtered)[number]) => getDisplayCost(d).amount ?? 0
+  const isConfirmed = (d: (typeof filtered)[number]) => getDisplayCost(d).confirmed
+  const totalCost = filtered.reduce((s, d) => s + effCost(d), 0)
+  const confirmedCost = filtered.reduce((s, d) => s + (isConfirmed(d) ? effCost(d) : 0), 0)
+  const pendingEstimatedCost = totalCost - confirmedCost
 
-  const byCategory = state.categories.map(c => ({
-    name: c.name,
-    color: c.color,
-    count: filtered.filter(d => d.categoryId === c.id).length,
-    cost: filtered.filter(d => d.categoryId === c.id).reduce((s, d) => s + (d.totalCost || 0), 0),
-  }))
+  const byCategory = state.categories.map(c => {
+    const cDefs = filtered.filter(d => d.categoryId === c.id)
+    return {
+      name: c.name,
+      color: c.color,
+      count: cDefs.length,
+      cost: cDefs.reduce((s, d) => s + effCost(d), 0),
+      confirmedCost: cDefs.reduce((s, d) => s + (isConfirmed(d) ? effCost(d) : 0), 0),
+      pendingCost: cDefs.reduce((s, d) => s + (isConfirmed(d) ? 0 : effCost(d)), 0),
+    }
+  })
 
   const sevKeys = ['critical', 'high', 'medium', 'low']
   const bySeverity = sevKeys.map(k => ({ severity: k, count: filtered.filter(d => d.severity === k).length }))
@@ -351,7 +370,7 @@ function buildApiData(state: ReturnType<typeof useStore>['state'], from: string,
     if (!d.firstOccurredAt) return
     const m = d.firstOccurredAt.slice(0, 7)
     const prev = monthMap.get(m) || { count: 0, cost: 0 }
-    monthMap.set(m, { count: prev.count + 1, cost: prev.cost + (d.totalCost || 0) })
+    monthMap.set(m, { count: prev.count + 1, cost: prev.cost + effCost(d) })
   })
   const monthly = Array.from(monthMap.entries()).map(([month, v]) => ({ month, ...v }))
 
@@ -370,14 +389,15 @@ function buildApiData(state: ReturnType<typeof useStore>['state'], from: string,
       managerName: d.managerName,
       recurrenceCount: d.recurrenceCount,
       firstOccurredAt: d.firstOccurredAt,
-      totalCost: d.totalCost,
+      totalCost: getDisplayCost(d).amount,
+      costConfirmed: isConfirmed(d),
       categoryName: cat?.name || null,
       categoryColor: cat?.color || null,
       vendorName: v?.name || null,
     }
   })
 
-  return { summary: { total, open, inProgress, hold, completed, totalCost }, byCategory, bySeverity, monthly, defects }
+  return { summary: { total, open, inProgress, hold, completed, totalCost, confirmedCost, pendingEstimatedCost }, byCategory, bySeverity, monthly, defects }
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -456,10 +476,12 @@ export default function ReportsPage() {
       ['전체', rp.summary.total], ['접수', rp.summary.open],
       ['처리중', rp.summary.inProgress], ['보류', rp.summary.hold], ['완료', rp.summary.completed],
       ['총 비용(원)', rp.summary.totalCost],
+      ['· 확정비용(원)', rp.summary.confirmedCost],
+      ['· 예상비용(미확정, 원)', rp.summary.pendingEstimatedCost],
       [],
       ['카테고리별 현황'],
-      ['카테고리', '건수', '비율(%)', '비용(원)'],
-      ...rp.byCategory.map(c => [c.name, c.count, rp.summary.total ? Math.round(c.count / rp.summary.total * 100) : 0, c.cost]),
+      ['카테고리', '건수', '비율(%)', '비용(원)', '확정비용(원)', '예상비용(미확정, 원)'],
+      ...rp.byCategory.map(c => [c.name, c.count, rp.summary.total ? Math.round(c.count / rp.summary.total * 100) : 0, c.cost, c.confirmedCost, c.pendingCost]),
       [],
       ['심각도별 분포'],
       ['심각도', '건수', '비율(%)'],
@@ -470,11 +492,12 @@ export default function ReportsPage() {
       ...rp.allMonths.map(m => [m.month, m.count]),
     ]
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumRows), '요약')
-    const headers = ['케이스번호', '제목', '카테고리', '위치', '심각도', '상태', '발생일', '비용(원)', '담당업체', '담당자', '신고자', '재발횟수']
+    const headers = ['케이스번호', '제목', '카테고리', '위치', '심각도', '상태', '발생일', '비용(원)', '비용상태', '담당업체', '담당자', '신고자', '재발횟수']
     const rows = rp.defects.map(d => [
       d.caseNumber, d.title, d.categoryName ?? '-', d.locationText ?? '-',
       SEV_LABELS[d.severity] ?? d.severity, STAT_LABELS[d.status] ?? d.status,
-      d.firstOccurredAt?.slice(0, 10) ?? '-', d.totalCost ?? 0,
+      d.firstOccurredAt?.slice(0, 10) ?? '-', d.totalCost ?? '',
+      d.totalCost == null ? '-' : (d.costConfirmed ? '확정' : '예상'),
       d.vendorName ?? '-', d.managerName ?? '-', d.reporterName ?? '-', d.recurrenceCount ?? 0,
     ])
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, ...rows]), '하자 목록')
@@ -497,11 +520,13 @@ export default function ReportsPage() {
   <div class="kbox"><div class="klbl">보류</div><div class="kv" style="color:#a16207">${rp.summary.hold}</div></div>
   <div class="kbox"><div class="klbl">완료</div><div class="kv" style="color:#0f7850">${rp.summary.completed}</div></div>
   <div class="kbox"><div class="klbl">총 비용</div><div class="kv" style="font-size:11pt;color:#be1044">${fmtKRW(rp.summary.totalCost)}</div></div>
+  <div class="kbox"><div class="klbl">확정비용</div><div class="kv" style="font-size:11pt;color:#0f7850">${fmtKRW(rp.summary.confirmedCost)}</div></div>
+  <div class="kbox"><div class="klbl">예상비용(미확정)</div><div class="kv" style="font-size:11pt;color:#b06b1a">${fmtKRW(rp.summary.pendingEstimatedCost)}</div></div>
 </div>
 <hr class="thin">
 <h2>카테고리별 현황</h2>
-<table><thead><tr><th>카테고리</th><th style="text-align:center">건수</th><th style="text-align:center">비율(%)</th><th style="text-align:right">비용</th></tr></thead>
-<tbody>${rp.byCategory.map(c => `<tr><td>${c.name}</td><td style="text-align:center;font-weight:700">${c.count}</td><td style="text-align:center">${rp.summary.total ? Math.round(c.count / rp.summary.total * 100) : 0}%</td><td style="text-align:right">${fmtKRW(c.cost)}</td></tr>`).join('')}</tbody></table>
+<table><thead><tr><th>카테고리</th><th style="text-align:center">건수</th><th style="text-align:center">비율(%)</th><th style="text-align:right">확정비용</th><th style="text-align:right">예상비용(미확정)</th></tr></thead>
+<tbody>${rp.byCategory.map(c => `<tr><td>${c.name}</td><td style="text-align:center;font-weight:700">${c.count}</td><td style="text-align:center">${rp.summary.total ? Math.round(c.count / rp.summary.total * 100) : 0}%</td><td style="text-align:right">${fmtKRW(c.confirmedCost)}</td><td style="text-align:right">${fmtKRW(c.pendingCost)}</td></tr>`).join('')}</tbody></table>
 <h2>심각도별 분포</h2>
 <table><thead><tr><th>심각도</th><th style="text-align:center">건수</th><th style="text-align:center">비율(%)</th></tr></thead>
 <tbody>${rp.sevData.map(s => `<tr><td>${s.label}</td><td style="text-align:center;font-weight:700">${s.count}</td><td style="text-align:center">${rp.summary.total ? Math.round(s.count / rp.summary.total * 100) : 0}%</td></tr>`).join('')}</tbody></table>
@@ -513,7 +538,7 @@ export default function ReportsPage() {
 ${rp.actionItems.length > 0 ? `<h2>조치 필요 사항</h2><table><thead><tr><th>케이스번호</th><th>제목</th><th>심각도</th><th>상태</th><th>담당업체</th></tr></thead><tbody>${rp.actionItems.map(d => `<tr><td style="font-family:monospace;font-size:8pt">${d.caseNumber}</td><td>${d.title}</td><td>${SEV_LABELS[d.severity] ?? d.severity}</td><td>${STAT_LABELS[d.status] ?? d.status}</td><td>${d.vendorName ?? '-'}</td></tr>`).join('')}</tbody></table>` : ''}
 <h2>하자 목록 상세</h2>
 <table><thead><tr><th>번호</th><th>제목</th><th>카테고리</th><th>심각도</th><th>상태</th><th>발생일</th><th style="text-align:right">비용</th></tr></thead>
-<tbody>${rp.defects.map(d => `<tr><td style="font-family:monospace;font-size:8pt">${d.caseNumber}</td><td>${d.title}</td><td>${d.categoryName ?? '-'}</td><td>${SEV_LABELS[d.severity] ?? d.severity}</td><td>${STAT_LABELS[d.status] ?? d.status}</td><td>${d.firstOccurredAt?.slice(0, 10) ?? '-'}</td><td style="text-align:right">${d.totalCost ? fmtKRW(d.totalCost) : '-'}</td></tr>`).join('')}</tbody></table>
+<tbody>${rp.defects.map(d => `<tr><td style="font-family:monospace;font-size:8pt">${d.caseNumber}</td><td>${d.title}</td><td>${d.categoryName ?? '-'}</td><td>${SEV_LABELS[d.severity] ?? d.severity}</td><td>${STAT_LABELS[d.status] ?? d.status}</td><td>${d.firstOccurredAt?.slice(0, 10) ?? '-'}</td><td style="text-align:right">${fmtCostCell(d)}</td></tr>`).join('')}</tbody></table>
 <div class="footer">대전충청검사센터 시설관리팀 | 하자관리시스템 | 출력일: ${today}</div>`
     const html = `<!DOCTYPE html><html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'><head><meta charset="UTF-8"><title>시설 하자관리 보고서</title><style>${wordCSS}</style></head><body>${body}</body></html>`
     const blob = new Blob(['﻿' + html], { type: 'application/msword;charset=utf-8' })
@@ -549,10 +574,14 @@ ${rp.actionItems.length > 0 ? `<h2>조치 필요 사항</h2><table><thead><tr><t
 
   const catCostChart = rp ? {
     labels: rp.byCategory.map(c => c.name),
-    datasets: [{ data: rp.byCategory.map(c => c.cost), backgroundColor: rp.byCategory.map(c => c.color + 'bb'), borderRadius: 4, borderSkipped: false as const }],
+    datasets: [
+      { label: '확정', data: rp.byCategory.map(c => c.confirmedCost), backgroundColor: rp.byCategory.map(c => c.color + 'ee'), borderRadius: 4, borderSkipped: false as const, stack: 'cost' },
+      { label: '예상(미확정)', data: rp.byCategory.map(c => c.pendingCost), backgroundColor: rp.byCategory.map(c => c.color + '55'), borderRadius: 4, borderSkipped: false as const, stack: 'cost' },
+    ],
   } : null
 
   const chartBase = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  const costChartBase = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'bottom' as const, labels: { font: { size: 10 }, boxWidth: 10 } } } }
 
   return (
     <div className="flex flex-col" style={{ minHeight: '100vh' }}>
@@ -632,7 +661,7 @@ ${rp.actionItems.length > 0 ? `<h2>조치 필요 사항</h2><table><thead><tr><t
         {rp && !loading && (
           <>
             {/* 6-column KPI */}
-            <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(6,1fr)' }}>
+            <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(8,1fr)' }}>
               {[
                 { label: '전체',   value: String(rp.summary.total),         color: '#635bff' },
                 { label: '접수',   value: String(rp.summary.open),          color: '#1d6dc2' },
@@ -640,6 +669,8 @@ ${rp.actionItems.length > 0 ? `<h2>조치 필요 사항</h2><table><thead><tr><t
                 { label: '보류',   value: String(rp.summary.hold),          color: '#a16207' },
                 { label: '완료',   value: String(rp.summary.completed),     color: '#0f7850' },
                 { label: '총 비용', value: fmtKRW(rp.summary.totalCost),   color: '#be1044', small: true },
+                { label: '확정비용', value: fmtKRW(rp.summary.confirmedCost), color: '#0f7850', small: true },
+                { label: '예상(미확정)', value: fmtKRW(rp.summary.pendingEstimatedCost), color: '#b06b1a', small: true },
               ].map(k => (
                 <div key={k.label} className="rounded-xl text-center" style={{ background: '#fff', border: '1px solid #e3e8ef', padding: '15px', boxShadow: '0 1px 3px rgba(10,37,64,0.06)' }}>
                   <p style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386', marginBottom: 7 }}>{k.label}</p>
@@ -675,7 +706,7 @@ ${rp.actionItems.length > 0 ? `<h2>조치 필요 사항</h2><table><thead><tr><t
               <div className="rounded-xl bg-white" style={{ border: '1px solid #e3e8ef', padding: '16px 18px', boxShadow: '0 1px 3px rgba(10,37,64,0.06)' }}>
                 <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540', marginBottom: 12 }}>카테고리별 비용</p>
                 <div style={{ height: 180 }}>
-                  {catCostChart && <Bar data={catCostChart} options={{ ...chartBase, scales: { x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#b0bac6' } }, y: { beginAtZero: true, grid: { color: '#f0f4f8' }, ticks: { font: { size: 10 }, color: '#b0bac6', callback: (v: number | string) => v ? `${(Number(v) / 10000).toFixed(0)}만` : 0 } } } }} />}
+                  {catCostChart && <Bar data={catCostChart} options={{ ...costChartBase, scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 }, color: '#b0bac6' } }, y: { stacked: true, beginAtZero: true, grid: { color: '#f0f4f8' }, ticks: { font: { size: 10 }, color: '#b0bac6', callback: (v: number | string) => v ? `${(Number(v) / 10000).toFixed(0)}만` : 0 } } } }} />}
                 </div>
               </div>
             </div>

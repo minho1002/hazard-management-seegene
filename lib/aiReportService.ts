@@ -1,5 +1,16 @@
 import type { Defect, Category, Vendor, DefectFile, FloorPlan } from '@/lib/store'
-import { isOverdue, isRecurring, needsTodayAction, getPaymentBadge } from '@/lib/designTokens'
+import { isOverdue, isRecurring, needsTodayAction, getPaymentBadge, getDisplayCost } from '@/lib/designTokens'
+
+// 보고서 전체가 참조하는 단일 비용 기준 — 확정비용(finalCost/totalCost)을 우선 사용하고,
+// 아직 확정되지 않은 건은 등록 시 입력한 예상비용으로 대체한다(0원과 미입력은 구분).
+function effCost(d: Defect): number { return getDisplayCost(d).amount ?? 0 }
+function isCostConfirmed(d: Defect): boolean { return getDisplayCost(d).confirmed }
+function hasNoCostInfo(d: Defect): boolean { return getDisplayCost(d).amount == null }
+function fmtManLabeled(d: Defect): string {
+  const { amount, confirmed } = getDisplayCost(d)
+  if (amount == null) return '-'
+  return confirmed ? fmtMan(amount) : `${fmtMan(amount)}(예상)`
+}
 
 export type ReportType = 'field-analysis' | 'budget-settlement' | 'executive-ppt' | 'recurring-defects' | 'cost-bearer' | 'defect-classification'
 
@@ -128,7 +139,7 @@ export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[]
   const recurring = open.filter(isRecurring)
   const actionDoneAwaiting = defects.filter(d => d.status === 'action_done')
   const unresolvedCost = open.filter(d => !d.costBearer || d.costBearer === '미정')
-  const unpaid = defects.filter(d => (d.totalCost ?? 0) > 0 && getPaymentBadge(d, files)?.tone !== 'success')
+  const unpaid = defects.filter(d => effCost(d) > 0 && getPaymentBadge(d, files)?.tone !== 'success')
 
   // 구역(층)별 반복 집계 — 3회 이상 발생한 구역을 "반복 위험 구역"으로 판단
   const zoneCounts: Record<string, { count: number; vendorNames: Set<number> }> = {}
@@ -144,7 +155,7 @@ export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[]
 
   const ownCostTotal = defects
     .filter(d => (d.costHandlingType ?? (d.costType === 'our' ? '우리측 부담' : null)) === '우리측 부담')
-    .reduce((s, d) => s + (d.totalCost ?? 0), 0)
+    .reduce((s, d) => s + effCost(d), 0)
 
   const headline: string[] = []
   if (todayItems.length > 0) {
@@ -210,7 +221,7 @@ function buildFieldAnalysisSections(input: ReportInput): ReportSection[] {
   const catData = categories.map(c => {
     const cDefs = defects.filter(d => d.categoryId === c.id)
     const done = cDefs.filter(d => d.status === 'completed').length
-    const cost = cDefs.reduce((s, d) => s + d.totalCost, 0)
+    const cost = cDefs.reduce((s, d) => s + effCost(d), 0)
     const recurred = cDefs.filter(d => d.recurrenceCount > 0).length
     const rate = cDefs.length > 0 ? Math.round(done / cDefs.length * 100) : 0
     return { ...c, count: cDefs.length, done, cost, recurred, rate }
@@ -254,7 +265,9 @@ function buildFieldAnalysisSections(input: ReportInput): ReportSection[] {
 
 function buildBudgetSections(input: ReportInput): ReportSection[] {
   const { defects, categories } = input
-  const totalCost = defects.reduce((s, d) => s + d.totalCost, 0)
+  const totalCost = defects.reduce((s, d) => s + effCost(d), 0)
+  const confirmedCost = defects.reduce((s, d) => s + (isCostConfirmed(d) ? effCost(d) : 0), 0)
+  const pendingEstimatedCost = totalCost - confirmedCost
   const total = defects.length
 
   const monthMap: Record<string, { count: number; cost: number }> = {}
@@ -263,27 +276,29 @@ function buildBudgetSections(input: ReportInput): ReportSection[] {
     if (!m) return
     if (!monthMap[m]) monthMap[m] = { count: 0, cost: 0 }
     monthMap[m].count++
-    monthMap[m].cost += d.totalCost
+    monthMap[m].cost += effCost(d)
   })
   const months = Object.entries(monthMap).sort((a, b) => a[0].localeCompare(b[0])).slice(-6)
   const maxMonthlyCost = Math.max(1, ...months.map(([, v]) => v.cost))
 
   const catCosts = categories.map(c => {
-    const cDefs = defects.filter(d => d.categoryId === c.id && d.totalCost > 0)
-    const cost = cDefs.reduce((s, d) => s + d.totalCost, 0)
+    const cDefs = defects.filter(d => d.categoryId === c.id && effCost(d) > 0)
+    const cost = cDefs.reduce((s, d) => s + effCost(d), 0)
     const predCost = cDefs.filter(d => d.predictedCostAvg).reduce((s, d) => s + (d.predictedCostAvg ?? 0), 0)
     return { ...c, cost, count: cDefs.length, predCost }
   }).sort((a, b) => b.cost - a.cost)
 
-  const predDefs = defects.filter(d => d.predictedCostAvg && d.totalCost > 0 && d.predictionErrorRate != null)
+  const predDefs = defects.filter(d => d.predictedCostAvg && effCost(d) > 0 && d.predictionErrorRate != null)
 
   return [
     {
       id: 'budget-kpi', title: '예산 집행 요약', type: 'kpi-grid',
       kpiItems: [
         { label: '총 누적 처리 비용', value: fmtMan(totalCost), color: '#635bff' },
+        { label: '· 확정', value: fmtMan(confirmedCost), color: '#0F7850' },
+        { label: '· 예상(미확정)', value: fmtMan(pendingEstimatedCost), color: '#d97706' },
         { label: '건당 평균 처리 비용', value: total > 0 && totalCost > 0 ? fmtMan(Math.round(totalCost / total)) : '-', color: '#059669' },
-        { label: '비용 미입력 건수', value: `${defects.filter(d => d.totalCost === 0).length}건`, color: '#d97706' },
+        { label: '비용 정보 미입력 건수', value: `${defects.filter(hasNoCostInfo).length}건`, color: '#d97706' },
         { label: 'AI 예측 적용 건수', value: `${predDefs.length}건`, color: '#635bff' },
       ],
     },
@@ -321,7 +336,8 @@ function buildExecutiveSections(input: ReportInput): ReportSection[] {
   const inProgress = defects.filter(d => d.status === 'in_progress').length
   const open = defects.filter(d => d.status === 'open').length
   const completionRate = total > 0 ? Math.round(completed / total * 100) : 0
-  const totalCost = defects.reduce((s, d) => s + d.totalCost, 0)
+  const totalCost = defects.reduce((s, d) => s + effCost(d), 0)
+  const pendingEstimatedCost = defects.reduce((s, d) => s + (isCostConfirmed(d) ? 0 : effCost(d)), 0)
   const openCriticals = defects.filter(d => d.severity === 'critical' && d.status !== 'completed')
   const recurring = defects.filter(d => d.recurrenceCount > 0)
 
@@ -334,7 +350,7 @@ function buildExecutiveSections(input: ReportInput): ReportSection[] {
 
   const catWithCount = categories.map(c => ({
     ...c, count: defects.filter(d => d.categoryId === c.id).length,
-    cost: defects.filter(d => d.categoryId === c.id).reduce((s, d) => s + d.totalCost, 0),
+    cost: defects.filter(d => d.categoryId === c.id).reduce((s, d) => s + effCost(d), 0),
   }))
   const topCat = catWithCount.slice().sort((a, b) => b.count - a.count)[0]
   const maxCatCount = Math.max(1, ...catWithCount.map(c => c.count))
@@ -375,8 +391,8 @@ function buildExecutiveSections(input: ReportInput): ReportSection[] {
       slideNumber: 4, slideTitle: '예산 집행 현황',
       items: [
         { label: '총 누적 처리 비용', value: fmtMan(totalCost), accent: true },
+        { label: '· 예상(미확정) 포함', value: pendingEstimatedCost > 0 ? fmtMan(pendingEstimatedCost) : '없음' },
         { label: '건당 평균 처리 비용', value: total > 0 && totalCost > 0 ? fmtMan(Math.round(totalCost / total)) : '-' },
-        { label: '연간 예상 비용', value: fmtMan(annualEst) },
         { label: '협력업체 수', value: `${vendors.length}개사` },
         { label: 'AI 예측 적용', value: `${defects.filter(d => d.predictedCostAvg).length}건` },
       ],
@@ -403,7 +419,7 @@ function buildRecurringSections(input: ReportInput): ReportSection[] {
     .sort((a, b) => b.recurrenceCount - a.recurrenceCount)
   const confirmed = defects.filter(d => d.recurringLevel === '반복 확정' || d.recurrenceCount > 0).length
   const suspected = defects.filter(d => d.recurringLevel === '반복 의심').length
-  const recurringCost = recurring.reduce((s, d) => s + d.totalCost, 0)
+  const recurringCost = recurring.reduce((s, d) => s + effCost(d), 0)
 
   return [
     {
@@ -419,7 +435,7 @@ function buildRecurringSections(input: ReportInput): ReportSection[] {
       id: 'recurring-table', title: '반복 하자 목록', type: 'table',
       tableHeaders: ['케이스번호', '하자명', '반복 상태', '재발 횟수', '누적 비용'],
       tableRows: recurring.slice(0, 20).map((d, i) => ({
-        cells: [d.caseNumber, d.title, d.recurringLevel ?? (d.recurrenceCount > 0 ? '반복 확정' : '반복 의심'), `${d.recurrenceCount}회`, fmtMan(d.totalCost)],
+        cells: [d.caseNumber, d.title, d.recurringLevel ?? (d.recurrenceCount > 0 ? '반복 확정' : '반복 의심'), `${d.recurrenceCount}회`, fmtManLabeled(d)],
         highlight: i === 0,
       })),
     },
@@ -432,16 +448,18 @@ function buildCostBearerSections(input: ReportInput): ReportSection[] {
   const data = bearers.map(b => ({
     name: b,
     count: defects.filter(d => (d.costBearer || '미정') === b).length,
-    cost: defects.filter(d => (d.costBearer || '미정') === b).reduce((s, d) => s + d.totalCost, 0),
+    cost: defects.filter(d => (d.costBearer || '미정') === b).reduce((s, d) => s + effCost(d), 0),
   }))
   const maxCount = Math.max(1, ...data.map(b => b.count))
-  const totalCost = defects.reduce((s, d) => s + d.totalCost, 0)
+  const totalCost = defects.reduce((s, d) => s + effCost(d), 0)
+  const pendingEstimatedCost = defects.reduce((s, d) => s + (isCostConfirmed(d) ? 0 : effCost(d)), 0)
 
   return [
     {
       id: 'bearer-kpi', title: '비용 부담 주체 요약', type: 'kpi-grid',
       kpiItems: [
         { label: '총 누적 처리 비용', value: fmtMan(totalCost), color: '#635bff' },
+        { label: '· 예상(미확정)', value: fmtMan(pendingEstimatedCost), color: '#d97706' },
         ...data.filter(b => b.name !== '미정').slice(0, 3).map(b => ({ label: `${b.name} 부담`, value: fmtMan(b.cost) })),
       ],
     },
@@ -481,17 +499,17 @@ function buildClassificationSections(input: ReportInput): ReportSection[] {
     {
       id: 'contractor-table', title: '시공사 귀책 가능 하자 목록', type: 'table',
       tableHeaders: ['케이스번호', '하자명', '누적 비용'],
-      tableRows: contractorList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtMan(d.totalCost)] })),
+      tableRows: contractorList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtManLabeled(d)] })),
     },
     {
       id: 'foundation-table', title: '재단 부담 예상 하자 목록', type: 'table',
       tableHeaders: ['케이스번호', '하자명', '누적 비용'],
-      tableRows: foundationList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtMan(d.totalCost)] })),
+      tableRows: foundationList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtManLabeled(d)] })),
     },
     {
       id: 'vendor-table', title: '외주업체 확인 필요 하자 목록', type: 'table',
       tableHeaders: ['케이스번호', '하자명', '누적 비용'],
-      tableRows: vendorList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtMan(d.totalCost)] })),
+      tableRows: vendorList.slice(0, 10).map(d => ({ cells: [d.caseNumber, d.title, fmtManLabeled(d)] })),
     },
   ]
 }
@@ -542,7 +560,7 @@ function mockGenerate(type: ReportType, input: ReportInput): GeneratedReport {
       completionRate: scopedDefects.length > 0
         ? Math.round(scopedDefects.filter(d => d.status === 'completed').length / scopedDefects.length * 100)
         : 0,
-      totalCost: scopedDefects.reduce((s, d) => s + d.totalCost, 0),
+      totalCost: scopedDefects.reduce((s, d) => s + effCost(d), 0),
     },
   }
 }

@@ -8,7 +8,7 @@ import DefectCalendar from '@/components/dashboard/DefectCalendar'
 import CategoryTabBar, { type CategoryTab } from '@/components/dashboard/CategoryTabBar'
 import {
   needsTodayAction, isOverdue, COLORS, getPaymentBadge,
-  isInProgressStatus, isScheduled, needsRecheck,
+  isInProgressStatus, isScheduled, needsRecheck, getDisplayCost,
 } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canRegister, useCurrentRole } from '@/lib/permissions'
@@ -148,9 +148,17 @@ export default function DashboardPage() {
   ]
 
   // 카드2: 조회기간 집행 비용 (defects는 이미 조회기간+카테고리 탭이 반영된 집합)
-  const periodOwnCost = defects.filter(d => costBucket(d) === '우리측').reduce((s, d) => s + (d.totalCost || 0), 0)
-  const periodClaimCost = defects.filter(d => costBucket(d) === '타업체').reduce((s, d) => s + (d.totalCost || 0), 0)
-  const periodTotalCost = defects.reduce((s, d) => s + (d.totalCost || 0), 0)
+  // 확정비용(finalCost 우선, 없으면 totalCost)과 예상비용(미확정)을 구분 집계한다.
+  const periodConfirmedCost = defects.reduce((s, d) => {
+    const { amount, confirmed } = getDisplayCost(d)
+    return s + (confirmed && amount != null ? amount : 0)
+  }, 0)
+  const periodEstimatedPendingCost = defects.reduce((s, d) => {
+    const { amount, confirmed } = getDisplayCost(d)
+    return s + (!confirmed && amount != null ? amount : 0)
+  }, 0)
+  const periodOwnCost = defects.filter(d => costBucket(d) === '우리측').reduce((s, d) => s + (getDisplayCost(d).confirmed ? (getDisplayCost(d).amount ?? 0) : 0), 0)
+  const periodClaimCost = defects.filter(d => costBucket(d) === '타업체').reduce((s, d) => s + (getDisplayCost(d).confirmed ? (getDisplayCost(d).amount ?? 0) : 0), 0)
 
   // 오늘 우선처리 Top3
   const sevRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
@@ -265,7 +273,16 @@ export default function DashboardPage() {
             <div style={{ ...card, padding: '14px 16px', position: 'relative' }}>
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#16A34A', borderRadius: '10px 10px 0 0' }} />
               <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#697386', marginBottom: 6 }}>💰 {period.label} 집행 비용</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.03em', lineHeight: 1 }}>{fmtKRW(periodTotalCost)}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.03em', lineHeight: 1 }}>{fmtKRW(periodConfirmedCost)}</div>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#0F7850', background: '#F0FDF4', padding: '2px 7px', borderRadius: 999 }}>확정</span>
+              </div>
+              {periodEstimatedPendingCost > 0 && (
+                <div style={{ fontSize: '0.7rem', color: '#B06B1A', marginTop: 4 }}>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 700, background: '#FFF7ED', padding: '1px 6px', borderRadius: 4, marginRight: 5 }}>예상(미확정)</span>
+                  {fmtKRW(periodEstimatedPendingCost)}
+                </div>
+              )}
               {(periodOwnCost > 0 || periodClaimCost > 0) && (
                 <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
                   {periodOwnCost > 0 && <span style={{ fontSize: '0.68rem', color: '#697386' }}>우리측 부담 <strong style={{ color: '#425466' }}>{fmtKRW(periodOwnCost)}</strong></span>}

@@ -102,6 +102,41 @@ export function isUnresolved(defect: Defect): boolean {
   return isInProgressStatus(defect) || isScheduled(defect) || isOverdue(defect) || needsRecheck(defect)
 }
 
+export type CostStatus = '예상' | '견적확인' | '확정' | '정산완료'
+
+export const COST_STATUS_META: Record<CostStatus, { label: string; color: string; bg: string }> = {
+  예상: { label: '예상', color: '#B06B1A', bg: '#FFF7ED' },
+  견적확인: { label: '견적확인', color: '#1D4ED8', bg: '#EFF6FF' },
+  확정: { label: '확정', color: '#0F7850', bg: '#F0FDF4' },
+  정산완료: { label: '정산완료', color: '#15803D', bg: '#DCFCE7' },
+}
+
+// 처리비용 표시값 — finalCost(확정비용)가 있으면 그 값을 최우선으로 사용한다.
+// finalCost가 없더라도 totalCost(조치 이력에 누적된 실제 비용 — finalCost 도입 이전
+// 데이터나 별도 경로로 기록된 비용)가 0보다 크면 이미 확정된 비용으로 간주하고,
+// 그마저 없을 때만 등록 시 입력한 예상 처리비용(estimatedCost)을 미확정으로 보여준다.
+// 0원은 "입력된 값이 없음"과 다르므로 반드시 null 체크로 구분한다.
+export function getDisplayCost(defect: Defect): { amount: number | null; confirmed: boolean } {
+  if (defect.finalCost != null) return { amount: defect.finalCost, confirmed: true }
+  if (defect.totalCost > 0) return { amount: defect.totalCost, confirmed: true }
+  if (defect.estimatedCost != null) return { amount: defect.estimatedCost, confirmed: false }
+  return { amount: null, confirmed: false }
+}
+
+// 확정된 하자의 costStatus 배지 — 값이 없으면(예상비용조차 없으면) null.
+export function getCostStatus(defect: Defect): CostStatus | null {
+  if (defect.costStatus) return defect.costStatus
+  if (defect.finalCost != null || defect.totalCost > 0) return '확정'
+  if (defect.estimatedCost != null) return '예상'
+  return null
+}
+
+// 예상 대비 확정 차액 (확정비용 - 예상비용) — 둘 다 있을 때만 계산.
+export function getCostDiff(defect: Defect): number | null {
+  if (defect.finalCost == null || defect.estimatedCost == null) return null
+  return defect.finalCost - defect.estimatedCost
+}
+
 export function needsTodayAction(defect: Defect): boolean {
   if (defect.status === 'completed') return false
   if (defect.status === 'recheck_needed') return true

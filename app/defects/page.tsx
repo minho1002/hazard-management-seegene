@@ -12,7 +12,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import PhotoCompareCell from '@/components/defects/PhotoCompareCell'
 import {
   isOverdue, isRecurring, needsTodayAction, needsAfterPhoto, isFullyClosed, getPaymentBadge, getCostBearerStatus,
-  isInProgressStatus, isScheduled, isUnresolved,
+  isInProgressStatus, isScheduled, isUnresolved, getDisplayCost, getCostStatus, COST_STATUS_META,
   COLORS, STATUS_FLOW, STATUS_META,
 } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -28,7 +28,6 @@ function fmtDate(s: string | null): string {
 }
 
 function fmtCost(n: number): string {
-  if (!n || n <= 0) return ''
   return n.toLocaleString('ko-KR') + '원'
 }
 
@@ -429,9 +428,22 @@ function DefectsPageInner() {
                       )}
                     </td>
 
-                    {/* 처리비용 */}
-                    <td style={{ padding: '7px 12px', verticalAlign: 'middle', fontSize: '0.76rem', color: '#0a2540', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {fmtCost(d.totalCost)}
+                    {/* 처리비용 — 확정비용(finalCost)이 있으면 그 값을, 없으면 예상비용을 costStatus 배지와 함께 표시. 0원도 값으로 표시한다. */}
+                    <td style={{ padding: '7px 12px', verticalAlign: 'middle', fontSize: '0.76rem', whiteSpace: 'nowrap' }}>
+                      {(() => {
+                        const { amount } = getDisplayCost(d)
+                        if (amount == null) return null
+                        const cs = getCostStatus(d)
+                        const meta = cs ? COST_STATUS_META[cs] : null
+                        return (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            {meta && (
+                              <span style={{ fontSize: '0.64rem', fontWeight: 700, color: meta.color, background: meta.bg, padding: '1px 6px', borderRadius: 4 }}>{meta.label}</span>
+                            )}
+                            <span style={{ color: '#0a2540', fontWeight: 600 }}>{fmtCost(amount)}</span>
+                          </span>
+                        )
+                      })()}
                     </td>
 
                     {/* 결제증빙/수단 */}

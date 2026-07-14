@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useStore } from '@/lib/store'
+import { useStore, type Defect } from '@/lib/store'
 import { FLOOR_SVGS } from '@/lib/floorSvgs'
 import { compressImage } from '@/lib/imageCompress'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -37,6 +37,10 @@ export default function EditDefectPage() {
     categoryId: defectRaw?.categoryId ?? ('' as string | number),
     severity: defectRaw?.severity ?? 'medium',
     costType: defectRaw?.costType ?? 'our',
+    estimatedCost: defectRaw?.estimatedCost != null ? String(defectRaw.estimatedCost) : '',
+    finalCost: defectRaw?.finalCost != null ? String(defectRaw.finalCost) : '',
+    costConfirmedAt: defectRaw?.costConfirmedAt ?? '',
+    costStatus: defectRaw?.costStatus ?? '예상',
     reporterName: defectRaw?.reporterName ?? '',
     assignedVendorId: defectRaw?.assignedVendorId ?? ('' as string | number),
     managerName: defectRaw?.managerName ?? '김관리',
@@ -107,6 +111,12 @@ export default function EditDefectPage() {
     const categoryId = form.categoryId === '__custom__'
       ? addCategory(customCategoryName)
       : (form.categoryId ? Number(form.categoryId) : null)
+    // costStatus는 관리자가 드롭다운을 직접 바꿨을 때만 명시적으로 보낸다 — 그렇지 않으면
+    // finalCost 입력만으로 store의 자동 확정 전환(예상→확정)이 정상 동작하지 않는다.
+    const initialCostStatus = defectRaw?.costStatus ?? '예상'
+    const costStatusPatch = form.costStatus !== initialCostStatus
+      ? { costStatus: form.costStatus as Defect['costStatus'] }
+      : {}
     updateDefect(defect.id, {
       title: form.title,
       description: form.description || null,
@@ -118,6 +128,10 @@ export default function EditDefectPage() {
       categoryId,
       severity: form.severity,
       costType: form.costType,
+      estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : null,
+      finalCost: form.finalCost ? Number(form.finalCost) : null,
+      costConfirmedAt: form.costConfirmedAt || null,
+      ...costStatusPatch,
       reporterName: form.reporterName || null,
       assignedVendorId: form.assignedVendorId ? Number(form.assignedVendorId) : null,
       managerName: form.managerName || '김관리',
@@ -202,6 +216,27 @@ export default function EditDefectPage() {
                       <option value="our">자체</option>
                       <option value="gukbo">국보</option>
                       <option value="claim">청구</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>예상 처리비용 (원)</label>
+                    <input type="number" style={inputCls} placeholder="0" value={form.estimatedCost} onChange={e => setField('estimatedCost', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>확정 처리비용 (원)</label>
+                    <input type="number" style={inputCls} placeholder="0" value={form.finalCost} onChange={e => setField('finalCost', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>비용 확정일</label>
+                    <input type="date" style={inputCls} value={form.costConfirmedAt} onChange={e => setField('costConfirmedAt', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>비용 상태</label>
+                    <select style={selectCls} value={form.costStatus} onChange={e => setField('costStatus', e.target.value)}>
+                      <option value="예상">예상</option>
+                      <option value="견적확인">견적확인</option>
+                      <option value="확정">확정</option>
+                      <option value="정산완료">정산완료</option>
                     </select>
                   </div>
                   <div>

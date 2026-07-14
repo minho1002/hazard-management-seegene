@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useStore, type Defect } from '@/lib/store'
 import {
-  COLORS, isOverdue, needsAfterPhoto, getPaymentBadge, getCostBearerStatus,
+  COLORS, isOverdue, needsAfterPhoto, getPaymentBadge, getCostBearerStatus, getDisplayCost,
   STATUS_FLOW, STATUS_META, SEVERITY_META, type SeverityKey,
 } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -80,7 +80,14 @@ export default function AnalyticsPage() {
   const kpiRecurring = periodDefects.filter(d => d.recurrenceCount > 0).length
   const kpiUnclassified = periodDefects.filter(d => (d.defectType ?? '확인 필요') === '확인 필요').length
   const kpiCostUnresolved = periodDefects.filter(d => getCostBearerStatus(d) === '미정').length
-  const kpiTotalCost = periodDefects.reduce((s, d) => s + (d.totalCost || 0), 0)
+  const kpiConfirmedCost = periodDefects.reduce((s, d) => {
+    const { amount, confirmed } = getDisplayCost(d)
+    return s + (confirmed && amount != null ? amount : 0)
+  }, 0)
+  const kpiEstimatedPendingCost = periodDefects.reduce((s, d) => {
+    const { amount, confirmed } = getDisplayCost(d)
+    return s + (!confirmed && amount != null ? amount : 0)
+  }, 0)
   const avgDurations = completedInRange
     .map(d => {
       const comp = getCompletionDate(d)
@@ -100,13 +107,20 @@ export default function AnalyticsPage() {
     { label: '반복', value: `${kpiRecurring}건`, danger: kpiRecurring > 0 },
     { label: '확인 필요', value: `${kpiUnclassified}건` },
     { label: '비용부담 미정', value: `${kpiCostUnresolved}건`, danger: kpiCostUnresolved > 0 },
-    { label: '누적 처리비용', value: fmtKRW(kpiTotalCost) },
+    { label: '누적 확정비용', value: fmtKRW(kpiConfirmedCost) },
+    { label: '누적 예상비용(미확정)', value: fmtKRW(kpiEstimatedPendingCost) },
     { label: '평균 처리기간', value: `${kpiAvgDuration}일` },
   ]
 
   // ── 집계 5종 ───────────────────────────────────────────────────────────
   const statusAgg = STATUS_FLOW.map(s => ({ key: s, label: STATUS_META[s].label, color: STATUS_META[s].color, count: periodDefects.filter(d => d.status === s).length }))
   const categoryAgg = state.categories.map(c => ({ key: String(c.id), label: c.name, color: c.color, count: periodDefects.filter(d => d.categoryId === c.id).length }))
+  const categoryCostAgg = state.categories.map(c => {
+    const rows = periodDefects.filter(d => d.categoryId === c.id)
+    const confirmed = rows.reduce((s, d) => { const { amount, confirmed } = getDisplayCost(d); return s + (confirmed && amount != null ? amount : 0) }, 0)
+    const pending = rows.reduce((s, d) => { const { amount, confirmed } = getDisplayCost(d); return s + (!confirmed && amount != null ? amount : 0) }, 0)
+    return { key: String(c.id), label: c.name, color: c.color, confirmed, pending }
+  }).filter(r => r.confirmed > 0 || r.pending > 0)
   const severityAgg = SEVERITY_KEYS.map(s => ({ key: s, label: SEVERITY_META[s].label, color: SEVERITY_META[s].color, count: periodDefects.filter(d => d.severity === s).length }))
   const costBearerAgg = COST_BEARER_KEYS.map(b => ({ key: b, label: b, color: b === '미정' ? COLORS.danger : COLORS.action, count: periodDefects.filter(d => getCostBearerStatus(d) === b).length }))
   const defectTypeAgg = DEFECT_TYPE_KEYS.map(t => ({ key: t, label: t, color: t === '하자사항' ? COLORS.danger : t === '일반사항' ? COLORS.success : COLORS.textMuted, count: periodDefects.filter(d => (d.defectType ?? '확인 필요') === t).length }))
@@ -116,7 +130,7 @@ export default function AnalyticsPage() {
     .sort((a, b) => b.recurrenceCount - a.recurrenceCount).slice(0, 10)
   const overdueTop10 = [...periodDefects].filter(isOverdue)
     .sort((a, b) => (a.firstOccurredAt ?? '').localeCompare(b.firstOccurredAt ?? '')).slice(0, 10)
-  const costTop10 = [...periodDefects].sort((a, b) => b.totalCost - a.totalCost).slice(0, 10)
+  const costTop10 = [...periodDefects].sort((a, b) => (getDisplayCost(b).amount ?? 0) - (getDisplayCost(a).amount ?? 0)).slice(0, 10)
   const facilityCounts: Record<string, number> = {}
   periodDefects.forEach(d => { if (d.facilityName) facilityCounts[d.facilityName] = (facilityCounts[d.facilityName] ?? 0) + 1 })
   const facilityRepeatList = periodDefects
@@ -160,6 +174,41 @@ export default function AnalyticsPage() {
                 </div>
                 <div style={{ height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: r.color, borderRadius: 999 }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // 카테고리별 비용 — 확정(진하게)과 예상/미확정(연하게)을 한 막대에 이어 붙여 비교한다.
+  function CostBarList({ title, rows }: { title: string; rows: { key: string; label: string; color: string; confirmed: number; pending: number }[] }) {
+    const max = Math.max(1, ...rows.map(r => r.confirmed + r.pending))
+    return (
+      <div style={card}>
+        <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid #f0f4f8' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0a2540' }}>{title}</div>
+        </div>
+        <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {rows.length === 0 && <div style={{ fontSize: '0.75rem', color: '#aab' }}>데이터가 없습니다.</div>}
+          {rows.map(r => {
+            const confirmedPct = Math.round((r.confirmed / max) * 100)
+            const pendingPct = Math.round((r.pending / max) * 100)
+            return (
+              <div key={r.key}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, gap: 8 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#0a2540' }}>{r.label}</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, textAlign: 'right' }}>
+                    {r.confirmed > 0 && <span style={{ color: '#0F7850' }}>확정 {fmtKRW(r.confirmed)}</span>}
+                    {r.confirmed > 0 && r.pending > 0 && <span style={{ color: '#b0bac6' }}> · </span>}
+                    {r.pending > 0 && <span style={{ color: '#B06B1A' }}>예상 {fmtKRW(r.pending)}</span>}
+                  </span>
+                </div>
+                <div style={{ height: 5, background: '#f0f4f8', borderRadius: 999, overflow: 'hidden', display: 'flex' }}>
+                  <div style={{ height: '100%', width: `${confirmedPct}%`, background: r.color }} />
+                  <div style={{ height: '100%', width: `${pendingPct}%`, background: r.color, opacity: 0.35 }} />
                 </div>
               </div>
             )
@@ -230,7 +279,18 @@ export default function AnalyticsPage() {
                     </td>
                     <td style={{ padding: '7px 12px' }}><StatusBadge status={d.status} /></td>
                     <td style={{ padding: '7px 12px', fontSize: '0.74rem', color: vendor ? '#0a2540' : '#b0bac6', whiteSpace: 'nowrap' as const }}>{vendor ? vendor.name : '자체처리'}</td>
-                    <td style={{ padding: '7px 12px', fontSize: '0.76rem', fontWeight: 600, color: '#0a2540', whiteSpace: 'nowrap' as const }}>{d.totalCost > 0 ? fmtKRW(d.totalCost) : '-'}</td>
+                    <td style={{ padding: '7px 12px', fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap' as const }}>
+                      {(() => {
+                        const { amount, confirmed } = getDisplayCost(d)
+                        if (amount == null) return <span style={{ color: '#b0bac6', fontWeight: 400 }}>-</span>
+                        return (
+                          <span style={{ color: confirmed ? '#0a2540' : '#B06B1A' }}>
+                            {!confirmed && <span style={{ fontSize: '0.6rem', fontWeight: 700, background: '#FFF7ED', padding: '1px 5px', borderRadius: 4, marginRight: 4 }}>예상</span>}
+                            {fmtKRW(amount)}
+                          </span>
+                        )
+                      })()}
+                    </td>
                     <td style={{ padding: '7px 12px', fontSize: '0.74rem', color: overdueDays ? COLORS.warning : '#b0bac6', fontWeight: overdueDays ? 700 : 400 }}>{overdueDays ? `${overdueDays}일` : '-'}</td>
                     <td style={{ padding: '7px 12px', fontSize: '0.74rem', color: d.recurrenceCount > 0 ? '#be1044' : '#b0bac6', fontWeight: d.recurrenceCount > 0 ? 700 : 400 }}>{d.recurrenceCount > 0 ? `${d.recurrenceCount}회` : '-'}</td>
                     <td style={{ padding: '7px 12px', fontSize: '0.68rem', whiteSpace: 'nowrap' as const }}>
@@ -306,6 +366,9 @@ export default function AnalyticsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
           <BarList title="상태별 집계" rows={statusAgg} />
           <BarList title="카테고리별 집계" rows={categoryAgg} />
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <CostBarList title="카테고리별 비용 (확정 · 예상/미확정)" rows={categoryCostAgg} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 14 }}>
           <BarList title="심각도별 집계" rows={severityAgg} />

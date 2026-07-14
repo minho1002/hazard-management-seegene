@@ -114,6 +114,10 @@ export interface Defect {
   vendorVisitDate?: string | null
   paymentCompletedAt?: string | null
   actionCompletedAt?: string | null
+  // 비용 확정 흐름 (예상 -> 견적확인 -> 확정 -> 정산완료)
+  finalCost?: number | null
+  costConfirmedAt?: string | null
+  costStatus?: '예상' | '견적확인' | '확정' | '정산완료'
 }
 
 export interface DefectStatusHistory {
@@ -453,6 +457,7 @@ export function useStore() {
       defectType: data.defectType ?? '확인 필요',
       reviewStatus: data.reviewStatus ?? '미검토',
       costApprovalStatus: data.costApprovalStatus ?? '미승인',
+      costStatus: data.costStatus ?? '예상',
     }
     // 등록 시 도면 클릭으로 지정한 위치도 다중 마커(defectLocations)에 함께 기록한다.
     const defectLocations = defect.locationX != null
@@ -479,7 +484,17 @@ export function useStore() {
 
   const updateDefect = useCallback((id: number, patch: Partial<Defect>) => {
     const current = loadState()
-    const defects = current.defects.map(d => d.id === id ? { ...d, ...patch } : d)
+    // 비용 확정 흐름 자동 전환 — 명시적으로 costStatus를 함께 넘기지 않은 경우에만 자동 계산한다
+    // (관리자가 드롭다운으로 '견적확인' 등을 수동 지정하면 그 값을 그대로 존중).
+    let patchWithCostStatus = patch
+    if (patch.costStatus === undefined) {
+      if (patch.paymentCompletedAt != null) {
+        patchWithCostStatus = { ...patchWithCostStatus, costStatus: '정산완료' }
+      } else if (patch.finalCost != null) {
+        patchWithCostStatus = { ...patchWithCostStatus, costStatus: '확정', costConfirmedAt: patch.costConfirmedAt ?? new Date().toISOString().slice(0, 10) }
+      }
+    }
+    const defects = current.defects.map(d => d.id === id ? { ...d, ...patchWithCostStatus } : d)
     // 수정 화면의 단일 위치 클릭(locationX/Y)은 도면 위치 다중 마커(defectLocations)와
     // 별개 저장소라 그대로 두면 상세 화면 도면에는 반영되지 않는다 — 대표(첫) 마커에 동기화한다.
     let defectLocations = current.defectLocations
@@ -574,6 +589,13 @@ export function useStore() {
     const patch: Partial<Defect> = { status: target, totalCost }
     if (opts.actionContent) patch.lastActionContent = opts.actionContent
     if (target === 'action_done') patch.actionCompletedAt = new Date().toISOString().slice(0, 10)
+    // 조치완료 시 입력한 실제 비용도 비용 확정 흐름(finalCost)에 동일하게 반영해
+    // 목록/대시보드/보고서 등 모든 화면이 하나의 확정 금액만 참조하도록 한다.
+    if (target === 'action_done' && opts.actualCost != null) {
+      patch.finalCost = totalCost
+      patch.costConfirmedAt = new Date().toISOString().slice(0, 10)
+      patch.costStatus = '확정'
+    }
     if (totalCost > 0 && defect.predictedCostAvg && defect.predictionErrorRate == null) {
       patch.predictionErrorRate = Math.round((Math.abs(totalCost - defect.predictedCostAvg) / totalCost) * 1000) / 10
     }
@@ -761,6 +783,12 @@ export function useStore() {
     }
     if (logData.logType === 'recurrence') {
       patch.recurrenceCount = (defect.recurrenceCount || 0) + 1
+    }
+    // 비용이 포함된 이력이 추가되면 비용 확정 흐름(finalCost)도 함께 갱신한다.
+    if (logData.costAmount) {
+      patch.finalCost = totalCost
+      patch.costConfirmedAt = new Date().toISOString().slice(0, 10)
+      patch.costStatus = '확정'
     }
     // 실제 비용이 처음 확정될 때 예측 오차율 계산
     if (totalCost > 0 && defect.predictedCostAvg && defect.predictionErrorRate == null) {
