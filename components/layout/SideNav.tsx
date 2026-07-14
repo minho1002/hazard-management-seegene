@@ -23,10 +23,11 @@ const analysisItems = [
 ]
 
 const adminItems = [
-  { href: '/admin/users',         label: '사용자 관리',   icon: 'fa-solid fa-users-gear' },
-  { href: '/admin/permissions',   label: '권한 관리',     icon: 'fa-solid fa-shield-halved' },
-  { href: '/admin/login-history', label: '로그인 이력',   icon: 'fa-solid fa-right-to-bracket' },
-  { href: '/admin/user-audit',    label: '계정 변경 이력', icon: 'fa-solid fa-clock-rotate-left' },
+  { href: '/admin/users',            label: '사용자 관리',       icon: 'fa-solid fa-users-gear' },
+  { href: '/admin/permissions',      label: '권한 관리',         icon: 'fa-solid fa-shield-halved' },
+  { href: '/admin/ai-reference-docs', label: 'AI 하자 기준자료 관리', icon: 'fa-solid fa-file-shield' },
+  { href: '/admin/login-history',    label: '로그인 이력',       icon: 'fa-solid fa-right-to-bracket' },
+  { href: '/admin/user-audit',       label: '계정 변경 이력',     icon: 'fa-solid fa-clock-rotate-left' },
 ]
 
 function NavItem({ href, label, icon, active }: { href: string; label: string; icon: string; active: boolean }) {

@@ -8,11 +8,15 @@
     "start": "next start",
     "lint": "next lint",
     "db:push": "npx drizzle-kit push",
-    "db:seed": "npx tsx db/seed.ts"
+    "db:seed": "npx tsx db/seed.ts",
+    "db:pg:generate": "drizzle-kit generate --config=drizzle.pg.config.ts",
+    "db:pg:push": "drizzle-kit push --config=drizzle.pg.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "^0.24.1",
+    "@vercel/blob": "^2.6.1",
+    "@vercel/functions": "^3.7.5",
     "autoprefixer": "^10.5.0",
     "better-sqlite3": "^11.10.0",
     "chart.js": "^4.4.8",
@@ -21,7 +25,10 @@
     "exceljs": "^4.4.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "mammoth": "^1.12.0",
     "next": "14.2.29",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^18.3.1",
@@ -32,6 +39,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "drizzle-kit": "^0.30.4",
