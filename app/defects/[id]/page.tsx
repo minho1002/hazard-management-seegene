@@ -14,6 +14,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canFinalizeClassification as canFinalizeClassificationFn, canConfirmRecurring, canDelete, canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import { analyzeRecurrence } from '@/lib/recurringAnalysisService'
+import AiClassificationPanel, { mapPctToDefectType, type AiClassificationResult } from '@/components/defects/AiClassificationPanel'
 
 const RECURRING_LEVEL_OPTIONS = ['반복 아님', '반복 의심', '반복 확정', '재점검 필요', '예방조치 진행중', '예방조치 완료'] as const
 
@@ -83,6 +84,7 @@ export default function DefectDetailPage() {
     relatedContract: '',
     classificationReason: '',
   })
+  const [lastAiResult, setLastAiResult] = useState<AiClassificationResult | null>(null)
 
   useEffect(() => {
     if (!defectRaw) return
@@ -199,6 +201,19 @@ export default function DefectDetailPage() {
       reason: classifyForm.classificationReason || null,
     })
     if (!result.ok) alert(result.error)
+    if (result.ok && lastAiResult) {
+      const mapped = mapPctToDefectType(lastAiResult)
+      fetch('/api/ai/confirm', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseNumber: defect.caseNumber,
+          inputSnapshot: { title: defect.title, description: defect.description ?? '', location: defect.locationText ?? '', facility: defect.facilityName ?? '', occurredAt: defect.firstOccurredAt ?? '', category: state.categories.find(c => c.id === defect.categoryId)?.name ?? '' },
+          aiSuggestion: { ...lastAiResult, recommendedDefectType: mapped.defectType, recommendedResponsibilityType: mapped.responsibilityType, recommendedCostBearer: mapped.costBearer },
+          adminFinal: { defectType: classifyForm.defectType, responsibilityType: classifyForm.responsibilityType, costBearer: classifyForm.costBearer, reason: classifyForm.classificationReason || null },
+          confirmedBy: defect.managerName ?? null,
+        }),
+      }).catch(err => console.error('AI confirm log failed (non-blocking):', err))
+    }
   }
 
   function onMapClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -488,11 +503,22 @@ export default function DefectDetailPage() {
                 <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#f3f5f7', color: '#425466' }}>{defect.defectType ?? '확인 필요'}</span>
               </div>
               <div style={{ padding: 16 }}>
-                {defect.aiClassification && (
-                  <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(99,91,255,.05)', border: '1px solid rgba(99,91,255,.15)', borderRadius: 8, fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>
-                    <strong style={{ color: '#635bff' }}><i className="fa-solid fa-wand-magic-sparkles" style={{ fontSize: 9, marginRight: 4 }} />AI 추천</strong> (신뢰도 {defect.aiClassification.confidence}): {defect.aiClassification.reasoning}
-                  </div>
-                )}
+                <div style={{ marginBottom: 12 }}>
+                  <AiClassificationPanel
+                    input={{
+                      title: defect.title, description: defect.description ?? '', location: defect.locationText ?? '',
+                      facility: defect.facilityName ?? '', occurredAt: defect.firstOccurredAt ?? '', category: state.categories.find(c => c.id === defect.categoryId)?.name ?? '',
+                      photos: [],
+                    }}
+                    autoRun={false}
+                    onApply={(mapped, result) => {
+                      setLastAiResult(result)
+                      setClassifyField('defectType', mapped.defectType)
+                      setClassifyField('responsibilityType', mapped.responsibilityType)
+                      setClassifyField('costBearer', mapped.costBearer)
+                    }}
+                  />
+                </div>
                 {canEditClassification ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
