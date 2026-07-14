@@ -17,6 +17,7 @@ import { canRegister, useCurrentRole, useCurrentUserName } from '@/lib/permissio
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import AccessDenied from '@/components/ui/AccessDenied'
 import { STATUS_FLOW, STATUS_META, getFieldTab } from '@/lib/designTokens'
+import AiClassificationPanel, { type AiClassificationResult } from '@/components/defects/AiClassificationPanel'
 
 const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
 const RESPONSIBILITY_OPTIONS = ['시공사 귀책', '재단/운영측 부담', '외주업체 부담', '사용자 과실', '소모품/노후', '원인 불명', '분쟁 가능']
@@ -109,6 +110,17 @@ function NewDefectPageInner() {
   useEffect(() => {
     return () => { photoPreviews.forEach(url => URL.revokeObjectURL(url)) }
   }, [photoPreviews])
+
+  // AiClassificationPanel은 서버로 사진을 보내야 하므로, object URL이 아닌 base64 data URL이 필요하다.
+  const [photoBase64, setPhotoBase64] = useState<string[]>([])
+  useEffect(() => {
+    Promise.all(photoFiles.map(f => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(f)
+    }))).then(setPhotoBase64)
+  }, [photoFiles])
 
   const role = useCurrentRole()
   usePermissionMatrix() // 권한 매트릭스 변경 시 재렌더 구독
@@ -590,11 +602,20 @@ function NewDefectPageInner() {
               </div>
               {classAccordionOpen && (
               <div style={{ padding: 16 }}>
-                {classificationSuggestion && (
-                  <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(99,91,255,.05)', border: '1px solid rgba(99,91,255,.15)', borderRadius: 8, fontSize: '0.73rem', color: '#425466', lineHeight: 1.6 }}>
-                    <strong style={{ color: '#635bff' }}>AI 기준자료 판단결과</strong> (신뢰도 {classificationSuggestion.confidence}): {classificationSuggestion.reasoning} 최종 확정은 등록 후 상세 화면에서 관리자가 진행합니다.
-                  </div>
-                )}
+                <div style={{ marginBottom: 12 }}>
+                  <AiClassificationPanel
+                    input={{
+                      title: form.title, description: form.description, location: form.locationText,
+                      facility: form.facilityName, occurredAt: form.firstOccurredAt, category: getFieldTab(
+                        form.categoryId === '__custom__' ? customCategoryName : (state.categories.find(c => c.id === Number(form.categoryId))?.name ?? '')
+                      ),
+                      photos: photoBase64,
+                    }}
+                    onApply={(mapped) => {
+                      setForm(f => ({ ...f, defectType: mapped.defectType as typeof DEFECT_TYPE_OPTIONS[number], responsibilityType: mapped.responsibilityType }))
+                    }}
+                  />
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   <div>
                     <label style={labelCls}>하자 구분</label>
