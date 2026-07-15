@@ -70,15 +70,18 @@ export default function HelpPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 24, padding: '24px 32px', alignItems: 'flex-start' }}>
-        {/* TOC */}
-        <nav style={{ ...card, width: 220, flexShrink: 0, padding: '14px 8px', position: 'sticky', top: 90, display: 'none' }} className="help-toc">
+        {/* TOC — position:fixed(뷰포트 고정)을 쓴다. 이 레이아웃의 <main>은 overflowX:hidden 때문에
+            브라우저가 overflow-y를 자동으로 auto로 계산해 의도치 않은 스크롤 컨테이너가 되어,
+            position:sticky를 쓰면 실제 문서 스크롤과 어긋나 화면에서 그냥 흘러가버린다(재현 확인됨).
+            그 전역 레이아웃은 다른 화면에 영향을 줄 수 있어 건드리지 않고, 이 페이지에서만 fixed로 우회한다. */}
+        <nav style={{ ...card, width: 220, flexShrink: 0, padding: '14px 8px', position: 'fixed', top: 112, left: 248, maxHeight: 'calc(100vh - 130px)', overflowY: 'auto', display: 'none' }} className="help-toc">
           {TOC.map(t => (
             <a key={t.id} href={`#${t.id}`} style={{ display: 'block', padding: '6px 10px', fontSize: '0.76rem', color: '#425466', textDecoration: 'none', borderRadius: 6 }}>{t.label}</a>
           ))}
         </nav>
 
         {/* Content */}
-        <div style={{ flex: 1, minWidth: 0, maxWidth: 860 }}>
+        <div className="help-content" style={{ flex: 1, minWidth: 0, maxWidth: 860 }}>
 
           <div style={{ background: '#0a2540', color: '#fff', borderRadius: 12, padding: '20px 24px', marginBottom: 28 }}>
             <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 8 }}>하자관리시스템이란?</div>
@@ -288,6 +291,7 @@ export default function HelpPage() {
       <style>{`
         @media (min-width: 1100px) {
           .help-toc { display: block !important; }
+          .help-content { margin-left: 244px; }
         }
       `}</style>
     </div>
