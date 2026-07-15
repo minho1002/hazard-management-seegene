@@ -30,6 +30,12 @@ const adminItems = [
   { href: '/admin/user-audit',       label: '계정 변경 이력',     icon: 'fa-solid fa-clock-rotate-left' },
 ]
 
+// 역할과 무관하게 모든 사용자에게 노출 — 관리자 설정 섹션 바로 아래에 배치되지만
+// canAccessAdminSettings 게이트 밖에서 항상 렌더링한다.
+const helpItems = [
+  { href: '/help', label: '사용자 가이드', icon: 'fa-solid fa-circle-question' },
+]
+
 function NavItem({ href, label, icon, active }: { href: string; label: string; icon: string; active: boolean }) {
   return (
     <Link
@@ -140,6 +146,10 @@ export default function SideNav() {
             ))}
           </>
         )}
+
+        {helpItems.map(item => (
+          <NavItem key={item.href} {...item} active={isActive(item.href)} />
+        ))}
       </nav>
 
       {/* 로그인 사용자 정보 */}
