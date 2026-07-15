@@ -20,7 +20,7 @@ const TOC = [
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <section id={id} style={{ scrollMarginTop: 90, marginBottom: 32 }}>
+    <section id={id} style={{ scrollMarginTop: 12, marginBottom: 32 }}>
       <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0a2540', marginBottom: 14, paddingBottom: 8, borderBottom: '1px solid #e3e8ef' }}>{title}</h2>
       <div style={{ fontSize: '0.85rem', color: '#425466', lineHeight: 1.8 }}>{children}</div>
     </section>
@@ -63,25 +63,25 @@ function Badge({ color, bg, children }: { color: string; bg: string; children: R
 
 export default function HelpPage() {
   return (
-    <div style={{ minHeight: '100vh' }}>
-      <div style={{ padding: '20px 32px 16px', borderBottom: '1px solid #e3e8ef', background: '#fff', position: 'sticky', top: 0, zIndex: 50 }}>
+    // 페이지 전체를 뷰포트 높이에 고정하고(위쪽 RoleBanner 높이만큼 빼줌), 제목/목차는
+    // 고정된 채로 두고 오른쪽 본문 영역 하나만 자체 스크롤되도록 한다 — 문서 전체 스크롤에
+    // 기대는 방식(sticky/fixed)은 <main>의 overflowX:hidden 때문에 어긋나는 문제가 있었다.
+    <div style={{ height: 'calc(100vh - 41px)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '20px 32px 16px', borderBottom: '1px solid #e3e8ef', background: '#fff', flexShrink: 0 }}>
         <h1 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0a2540' }}>사용자 가이드</h1>
         <div style={{ fontSize: '0.72rem', color: '#697386', marginTop: 2 }}>하자관리시스템을 처음 사용하시는 분도 쉽게 따라할 수 있도록 정리했습니다.</div>
       </div>
 
-      <div style={{ display: 'flex', gap: 24, padding: '24px 32px', alignItems: 'flex-start' }}>
-        {/* TOC — position:fixed(뷰포트 고정)을 쓴다. 이 레이아웃의 <main>은 overflowX:hidden 때문에
-            브라우저가 overflow-y를 자동으로 auto로 계산해 의도치 않은 스크롤 컨테이너가 되어,
-            position:sticky를 쓰면 실제 문서 스크롤과 어긋나 화면에서 그냥 흘러가버린다(재현 확인됨).
-            그 전역 레이아웃은 다른 화면에 영향을 줄 수 있어 건드리지 않고, 이 페이지에서만 fixed로 우회한다. */}
-        <nav style={{ ...card, width: 220, flexShrink: 0, padding: '14px 8px', position: 'fixed', top: 112, left: 248, maxHeight: 'calc(100vh - 130px)', overflowY: 'auto', display: 'none' }} className="help-toc">
+      <div style={{ display: 'flex', gap: 24, padding: '24px 32px', flex: 1, minHeight: 0 }}>
+        {/* TOC — 고정. 클릭하면 오른쪽 본문 영역만 스크롤된다. */}
+        <nav style={{ ...card, width: 220, flexShrink: 0, padding: '14px 8px', alignSelf: 'flex-start', maxHeight: '100%', overflowY: 'auto', display: 'none' }} className="help-toc">
           {TOC.map(t => (
             <a key={t.id} href={`#${t.id}`} style={{ display: 'block', padding: '6px 10px', fontSize: '0.76rem', color: '#425466', textDecoration: 'none', borderRadius: 6 }}>{t.label}</a>
           ))}
         </nav>
 
-        {/* Content */}
-        <div className="help-content" style={{ flex: 1, minWidth: 0, maxWidth: 860 }}>
+        {/* Content — 이 영역만 자체적으로 스크롤된다 */}
+        <div className="help-content" style={{ flex: 1, minWidth: 0, maxWidth: 860, height: '100%', overflowY: 'auto', paddingRight: 4 }}>
 
           <div style={{ background: '#0a2540', color: '#fff', borderRadius: 12, padding: '20px 24px', marginBottom: 28 }}>
             <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 8 }}>하자관리시스템이란?</div>
@@ -291,7 +291,6 @@ export default function HelpPage() {
       <style>{`
         @media (min-width: 1100px) {
           .help-toc { display: block !important; }
-          .help-content { margin-left: 244px; }
         }
       `}</style>
     </div>
