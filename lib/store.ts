@@ -573,12 +573,15 @@ export function useStore() {
     if (error) return { ok: false, error }
 
     let logs = current.logs
-    if (target === 'action_done' && opts.actionContent) {
+    // 조치 내용을 비워두고 실제 비용만 입력해 전환하는 경우도 지원해야 하므로(선택 입력),
+    // 둘 중 하나라도 있으면 로그를 남긴다 — actionContent에만 게이팅하면 비용만 입력했을 때
+    // 로그가 전혀 생기지 않아 totalCost/finalCost에 반영되지 않는 문제가 있었다.
+    if (target === 'action_done' && (opts.actionContent || opts.actualCost != null)) {
       logs = [...logs, {
         id: nextId(logs),
         defectId: id,
         logType: 'action',
-        title: opts.actionContent,
+        title: opts.actionContent || '조치완료 (비용 입력)',
         content: null,
         costAmount: opts.actualCost ?? null,
         occurredAt: new Date().toISOString(),
