@@ -188,7 +188,9 @@ export function getCostBearerStatus(defect: Defect): string {
 }
 
 export function getPaymentBadge(defect: Defect, files: DefectFile[]): PaymentBadge | null {
-  if (!defect.totalCost || defect.totalCost <= 0) return null
+  // 예상비용만 있고 아직 확정 전인 건도 결제 수단은 미리 지정할 수 있으므로,
+  // 확정비용(totalCost)뿐 아니라 예상비용까지 포함한 비용 정보 유무로 게이팅한다.
+  if (getDisplayCost(defect).amount == null) return null
   const hasReceipt = files.some(f => f.defectId === defect.id && (f.photoType === 'quote' || f.photoType === 'work_confirmation'))
   if (!defect.paymentMethod || defect.paymentMethod === '미정') {
     return { label: '미정산', icon: '❌', tone: 'danger', hasReceipt: false }
