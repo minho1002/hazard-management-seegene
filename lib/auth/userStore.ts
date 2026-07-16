@@ -5,6 +5,7 @@ import { getCurrentRole } from './session'
 import {
   loadUsers, persistUsers, ensureSeeded, hashPassword,
   appendUserAuditLog, loadUserAuditLogs, loadLoginHistory,
+  persistLoginHistory, persistUserAuditLogs,
   generateTempPassword, nextUserId,
 } from './userStorage'
 
@@ -150,5 +151,23 @@ export function useUserStore() {
     return { ok: true, tempPassword }
   }, [refresh])
 
-  return { users, auditLogs, loginHistory, ready, createUser, updateUser, deleteUser, resetPassword, refresh }
+  const deleteLoginHistory = useCallback((ids: string[]): Result => {
+    if (!canManageUsers(getCurrentRole())) return { ok: false, error: NO_PERMISSION_ERROR }
+    const current = loadLoginHistory()
+    const idSet = new Set(ids)
+    persistLoginHistory(current.filter(h => !idSet.has(h.id)))
+    refresh()
+    return { ok: true }
+  }, [refresh])
+
+  const deleteUserAuditLogs = useCallback((ids: string[]): Result => {
+    if (!canManageUsers(getCurrentRole())) return { ok: false, error: NO_PERMISSION_ERROR }
+    const current = loadUserAuditLogs()
+    const idSet = new Set(ids)
+    persistUserAuditLogs(current.filter(l => !idSet.has(l.id)))
+    refresh()
+    return { ok: true }
+  }, [refresh])
+
+  return { users, auditLogs, loginHistory, ready, createUser, updateUser, deleteUser, resetPassword, deleteLoginHistory, deleteUserAuditLogs, refresh }
 }

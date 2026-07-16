@@ -117,6 +117,16 @@ export function appendLoginHistory(entry: Omit<LoginHistoryEntry, 'id' | 'create
   return full
 }
 
+export function persistLoginHistory(entries: LoginHistoryEntry[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(LOGIN_HISTORY_KEY, JSON.stringify(entries))
+}
+
+export function persistUserAuditLogs(entries: UserAuditLog[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(USER_AUDIT_KEY, JSON.stringify(entries))
+}
+
 export function generateTempPassword(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
   let out = ''

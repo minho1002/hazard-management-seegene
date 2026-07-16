@@ -850,6 +850,34 @@ export function useStore() {
     setState(next)
   }, [])
 
+  // 감사이력 화면은 statusHistory/deleteLogs/classificationHistory/fileDeleteLogs/recurringHistory
+  // 5개 배열을 합쳐 보여주므로, 화면에서 쓰는 `${타입}-${id}` 키 접두어로 원본 배열을 가려낸다.
+  const deleteAuditEntries = useCallback((keys: string[]): { ok: boolean; error?: string } => {
+    if (!canDelete(getCurrentRole())) return { ok: false, error: '이력 삭제는 관리자만 처리할 수 있습니다.' }
+    const idsByPrefix: Record<string, Set<number>> = {}
+    for (const key of keys) {
+      const idx = key.lastIndexOf('-')
+      if (idx < 0) continue
+      const prefix = key.slice(0, idx)
+      const id = parseInt(key.slice(idx + 1), 10)
+      if (isNaN(id)) continue
+      if (!idsByPrefix[prefix]) idsByPrefix[prefix] = new Set()
+      idsByPrefix[prefix].add(id)
+    }
+    const current = loadState()
+    const next: AppState = {
+      ...current,
+      statusHistory: idsByPrefix['status'] ? current.statusHistory.filter(h => !idsByPrefix['status'].has(h.id)) : current.statusHistory,
+      deleteLogs: idsByPrefix['delete'] ? current.deleteLogs.filter(h => !idsByPrefix['delete'].has(h.id)) : current.deleteLogs,
+      classificationHistory: idsByPrefix['class'] ? current.classificationHistory.filter(h => !idsByPrefix['class'].has(h.id)) : current.classificationHistory,
+      fileDeleteLogs: idsByPrefix['file'] ? current.fileDeleteLogs.filter(h => !idsByPrefix['file'].has(h.id)) : current.fileDeleteLogs,
+      recurringHistory: idsByPrefix['recur'] ? current.recurringHistory.filter(h => !idsByPrefix['recur'].has(h.id)) : current.recurringHistory,
+    }
+    persistState(next)
+    setState(next)
+    return { ok: true }
+  }, [])
+
   return {
     state,
     addCategory,
@@ -871,6 +899,7 @@ export function useStore() {
     saveFloorImage,
     addFile,
     deleteFile,
+    deleteAuditEntries,
     saveState: (s: AppState) => save(s),
   }
 }
