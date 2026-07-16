@@ -112,6 +112,7 @@ function DefectsPageInner() {
       if (quickFilter === 'inprogress' && !isInProgressStatus(d)) return false
       if (quickFilter === 'scheduled' && !isScheduled(d)) return false
       if (quickFilter === 'unresolved' && !isUnresolved(d)) return false
+      if (quickFilter === 'action_done' && d.status !== 'action_done') return false
       if (quickFilter === 'nophoto' && !needsAfterPhoto(d, state.files)) return false
       if (quickFilter === 'unclassified' && (d.defectType ?? '확인 필요') !== '확인 필요') return false
       if (quickFilter === 'costunresolved' && getCostBearerStatus(d) !== '미정') return false

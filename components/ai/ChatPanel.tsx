@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useStore, type AppState } from '@/lib/store'
+import { STATUS_META, STATUS_FLOW, getDisplayCost, type StatusKey } from '@/lib/designTokens'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -9,36 +10,50 @@ interface Message {
 }
 
 const SEV_LABELS: Record<string, string> = { low: '낮음', medium: '보통', high: '높음', critical: '긴급' }
-const STAT_LABELS: Record<string, string> = { open: '접수', in_progress: '처리중', completed: '완료' }
+
+function statusLabel(status: string): string {
+  return STATUS_META[status as StatusKey]?.label ?? status
+}
 
 function fmtKRW(n: number | null | undefined) {
-  if (!n) return '0원'
+  if (n == null) return '금액 미입력'
   return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(n)
 }
 
+function costOf(d: { estimatedCost?: number | null; finalCost?: number | null; totalCost: number }): number {
+  return getDisplayCost(d as Parameters<typeof getDisplayCost>[0]).amount ?? 0
+}
+
 function generateAIResponse(q: string, state: AppState): string {
-  const defects = state.defects
+  // 삭제된 하자(deletedAt이 있는 건)는 실제 운영 현황이 아니므로 반드시 제외한다 —
+  // 포함하면 실제 화면(하자 목록 등)에 보이는 건수와 어긋나는 부정확한 답변이 된다.
+  const defects = state.defects.filter(d => !d.deletedAt)
   const total = defects.length
-  const open = defects.filter(d => d.status === 'open').length
-  const inProg = defects.filter(d => d.status === 'in_progress').length
-  const done = defects.filter(d => d.status === 'completed').length
   const ql = q.toLowerCase()
 
   if (ql.includes('요약') || ql.includes('현황') || ql.includes('진행')) {
+    const byStatus = STATUS_FLOW
+      .map(s => ({ status: s, count: defects.filter(d => d.status === s).length }))
+      .filter(s => s.count > 0)
     const prog = defects.filter(d => d.status === 'in_progress')
-    return `📊 하자 현황 요약\n\n전체 ${total}건:\n• 접수: ${open}건\n• 처리중: ${inProg}건\n• 완료: ${done}건\n\n처리중 하자:\n` + prog.map(d => `• [${d.caseNumber}] ${d.title}`).join('\n')
+    return `📊 하자 현황 요약\n\n전체 ${total}건:\n` + byStatus.map(s => `• ${statusLabel(s.status)}: ${s.count}건`).join('\n')
+      + (prog.length ? `\n\n진행중 하자:\n` + prog.map(d => `• [${d.caseNumber}] ${d.title}`).join('\n') : '')
   }
   if (ql.includes('심각') || ql.includes('긴급')) {
     const crit = defects.filter(d => d.severity === 'critical' || d.severity === 'high')
-    return `⚠️ 심각도 높은 하자 ${crit.length}건:\n` + crit.map(d => `• [${d.caseNumber}] ${d.title} — ${SEV_LABELS[d.severity]} / ${STAT_LABELS[d.status]}`).join('\n')
+    if (!crit.length) return '심각도가 높음/긴급인 하자가 없습니다.'
+    return `⚠️ 심각도 높은 하자 ${crit.length}건:\n` + crit.map(d => `• [${d.caseNumber}] ${d.title} — ${SEV_LABELS[d.severity]} / ${statusLabel(d.status)}`).join('\n')
   }
   if (ql.includes('누수')) {
-    const leaks = defects.filter(d => d.categoryId === 1)
-    return `💧 누수 관련 ${leaks.length}건\n누적비용: ${fmtKRW(leaks.reduce((s, d) => s + (d.totalCost || 0), 0))}\n` + leaks.map(d => `• [${d.caseNumber}] ${d.title} (${STAT_LABELS[d.status]}, 재발 ${d.recurrenceCount}회)`).join('\n')
+    const leakCategoryIds = new Set<number | null>(state.categories.filter(c => c.name.includes('누수')).map(c => c.id))
+    const leaks = defects.filter(d => leakCategoryIds.has(d.categoryId))
+    if (!leaks.length) return '누수 관련 등록된 하자가 없습니다.'
+    return `💧 누수 관련 ${leaks.length}건\n누적비용: ${fmtKRW(leaks.reduce((s, d) => s + costOf(d), 0))}\n` + leaks.map(d => `• [${d.caseNumber}] ${d.title} (${statusLabel(d.status)}, 재발 ${d.recurrenceCount}회)`).join('\n')
   }
   if (ql.includes('비용')) {
-    const sorted = [...defects].sort((a, b) => (b.totalCost || 0) - (a.totalCost || 0))
-    return `💰 비용 상위 하자:\n` + sorted.slice(0, 3).map((d, i) => `${i + 1}. [${d.caseNumber}] ${d.title} — ${fmtKRW(d.totalCost)}`).join('\n')
+    const sorted = [...defects].sort((a, b) => costOf(b) - costOf(a)).filter(d => costOf(d) > 0)
+    if (!sorted.length) return '비용이 입력된 하자가 없습니다.'
+    return `💰 비용 상위 하자:\n` + sorted.slice(0, 3).map((d, i) => `${i + 1}. [${d.caseNumber}] ${d.title} — ${fmtKRW(costOf(d))}`).join('\n')
   }
   if (ql.includes('재발')) {
     const rec = defects.filter(d => d.recurrenceCount > 0).sort((a, b) => b.recurrenceCount - a.recurrenceCount)
@@ -47,9 +62,13 @@ function generateAIResponse(q: string, state: AppState): string {
   }
   if (ql.includes('완료')) {
     const comp = defects.filter(d => d.status === 'completed')
-    return `✅ 완료 처리 ${comp.length}건:\n` + comp.map(d => `• [${d.caseNumber}] ${d.title} (${fmtKRW(d.totalCost)})`).join('\n')
+    if (!comp.length) return '최종완료 처리된 하자가 없습니다.'
+    return `✅ 최종완료 처리 ${comp.length}건:\n` + comp.map(d => `• [${d.caseNumber}] ${d.title} (${fmtKRW(costOf(d))})`).join('\n')
   }
-  return `현재 현황:\n• 전체 ${total}건 / 접수 ${open}건 / 처리중 ${inProg}건 / 완료 ${done}건\n\n질문 예시:\n• 진행중인 하자 요약해줘\n• 누수 현황 알려줘\n• 비용이 많이 든 하자는?\n• 재발 이력 있는 하자는?`
+  const byStatus = STATUS_FLOW
+    .map(s => ({ status: s, count: defects.filter(d => d.status === s).length }))
+    .filter(s => s.count > 0)
+  return `현재 현황:\n• 전체 ${total}건 (${byStatus.map(s => `${statusLabel(s.status)} ${s.count}건`).join(' / ')})\n\n질문 예시:\n• 진행중인 하자 요약해줘\n• 누수 현황 알려줘\n• 비용이 많이 든 하자는?\n• 재발 이력 있는 하자는?`
 }
 
 const QUICK_CHIPS = [

@@ -146,6 +146,9 @@ export default function DashboardPage() {
     { key: 'overdue', label: '지연', count: overdueItems.length, color: '#C2410C' },
     { key: 'recheck', label: '재점검 필요', count: recheckItems.length, color: '#C2410C' },
   ]
+  // 조치완료(action_done): 실무자가 조치를 마쳤지만 관리자 최종완료 승인 전 단계 — 미완결 합계에는
+  // 포함되지 않지만(집계 로직 불변), 처리 현황을 한눈에 보기 위해 별도로 함께 노출한다.
+  const actionDoneItems = defects.filter(d => d.status === 'action_done')
 
   // 카드2: 조회기간 집행 비용 (defects는 이미 조회기간+카테고리 탭이 반영된 집합)
   // 확정비용(finalCost 우선, 없으면 totalCost)과 예상비용(미확정)을 구분 집계한다.
@@ -259,15 +262,27 @@ export default function DashboardPage() {
                   </Link>
                 ))}
               </div>
-              <Link
-                href="/defects?filter=unresolved"
-                style={{ textDecoration: 'none', display: 'block', marginTop: 8, padding: '10px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FCA5A5' }}
-              >
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#B91C1C' }}>미완결 합계</span>
-                  <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B91C1C' }}>{unresolvedIds.size}<span style={{ fontSize: '0.75rem', fontWeight: 600, marginLeft: 3 }}>건</span></span>
-                </div>
-              </Link>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                <Link
+                  href="/defects?filter=unresolved"
+                  style={{ textDecoration: 'none', display: 'block', padding: '10px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FCA5A5' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#B91C1C' }}>미완결 합계</span>
+                    <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B91C1C' }}>{unresolvedIds.size}<span style={{ fontSize: '0.75rem', fontWeight: 600, marginLeft: 3 }}>건</span></span>
+                  </div>
+                </Link>
+                <Link
+                  href="/defects?filter=action_done"
+                  title="조치완료: 조치는 끝났지만 관리자 최종완료 승인 전 단계"
+                  style={{ textDecoration: 'none', display: 'block', padding: '10px 12px', borderRadius: 8, background: '#F0FDF4', border: '1px solid #86EFAC' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#15803D' }}>조치완료</span>
+                    <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803D' }}>{actionDoneItems.length}<span style={{ fontSize: '0.75rem', fontWeight: 600, marginLeft: 3 }}>건</span></span>
+                  </div>
+                </Link>
+              </div>
             </div>
 
             <div style={{ ...card, padding: '14px 16px', position: 'relative' }}>

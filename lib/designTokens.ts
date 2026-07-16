@@ -195,10 +195,11 @@ export function getPaymentBadge(defect: Defect, files: DefectFile[]): PaymentBad
   if (!defect.paymentMethod || defect.paymentMethod === '미정') {
     return { label: '미정산', icon: '❌', tone: 'danger', hasReceipt: false }
   }
+  // 증빙 여부(hasReceipt)는 배지 문구에 노출하지 않는다 — 결제 수단만 보여준다.
   return {
-    label: hasReceipt ? `${defect.paymentMethod} · 증빙완료` : `${defect.paymentMethod} · 증빙미첨부`,
+    label: defect.paymentMethod,
     icon: PAYMENT_METHOD_ICON[defect.paymentMethod] ?? '💰',
-    tone: hasReceipt ? 'success' : 'warning',
+    tone: 'success',
     hasReceipt,
   }
 }
