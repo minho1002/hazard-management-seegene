@@ -73,9 +73,8 @@ export interface ReportInput {
 
 // ── Helper ─────────────────────────────────────────────────────────────────
 
+// 만원/억원 단위로 반올림해서 보여주면 실제 확정 금액과 어긋나 보이므로, 원 단위 실금액을 그대로 표기한다.
 function fmtMan(v: number): string {
-  if (v >= 100_000_000) return `${(v / 100_000_000).toFixed(1)}억원`
-  if (v >= 10_000) return `${Math.round(v / 10_000)}만원`
   if (v > 0) return `${v.toLocaleString()}원`
   return '-'
 }

@@ -4,9 +4,8 @@ function safeColor(c: string | undefined, fallback: string): string {
   return c && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : fallback
 }
 
+// 만원/억원 단위로 반올림하면 확정 금액과 어긋나 보이므로 원 단위 실금액을 그대로 표기한다.
 function fmtKRW(v: number): string {
-  if (v >= 100_000_000) return `${(v / 100_000_000).toFixed(1)}억원`
-  if (v >= 10_000) return `${Math.round(v / 10_000)}만원`
   if (v > 0) return `${v.toLocaleString()}원`
   return '-'
 }

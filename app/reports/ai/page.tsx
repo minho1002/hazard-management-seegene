@@ -19,10 +19,8 @@ import { ReportToast, type ToastMessage } from '@/components/common/ReportToast'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const fmtKRW = (v: number) =>
-  v >= 100_000_000 ? `${(v / 100_000_000).toFixed(1)}억` :
-  v >= 10_000 ? `${Math.round(v / 10_000).toLocaleString()}만` :
-  v > 0 ? `${v.toLocaleString()}원` : '-'
+// 만/억 단위로 반올림하면 확정 금액과 어긋나 보이므로 원 단위 실금액을 그대로 표기한다.
+const fmtKRW = (v: number) => v > 0 ? `${v.toLocaleString()}원` : '-'
 
 // ── Report type configs ────────────────────────────────────────────────────
 
