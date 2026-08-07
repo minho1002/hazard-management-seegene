@@ -9,26 +9,30 @@ import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import UserPanel from './UserPanel'
 
 const menuItems = [
-  { href: '/dashboard', label: '대시보드', icon: 'fa-solid fa-table-cells-large' },
-  { href: '/defects',   label: '하자 목록', icon: 'fa-solid fa-list-check' },
+  { href: '/dashboard',   label: '대시보드', icon: 'fa-solid fa-table-cells-large' },
+  { href: '/analytics',   label: '운영현황', icon: 'fa-solid fa-calendar-days' },
+  { href: '/defects',     label: '하자 목록', icon: 'fa-solid fa-list-check' },
   { href: '/defects/new', label: '하자 등록', icon: 'fa-solid fa-circle-plus' },
 ]
 
 const analysisItems = [
-  { href: '/analytics',  label: '집계현황',     icon: 'fa-solid fa-chart-line' },
   { href: '/reports',    label: '보고서',       icon: 'fa-solid fa-chart-bar' },
   { href: '/reports/ai', label: 'AI 보고서',    icon: 'fa-solid fa-wand-magic-sparkles' },
   { href: '/ai',         label: 'AI 어시스턴트', icon: 'fa-solid fa-robot' },
-  { href: '/audit',      label: '감사이력',     icon: 'fa-solid fa-clipboard-list' },
 ]
 
 const adminItems = [
+  { href: '/admin/ai-reference-docs', label: 'AI 하자 기준자료 관리', icon: 'fa-solid fa-file-shield' },
   { href: '/admin/users',            label: '사용자 관리',       icon: 'fa-solid fa-users-gear' },
   { href: '/admin/permissions',      label: '권한 관리',         icon: 'fa-solid fa-shield-halved' },
-  { href: '/admin/ai-reference-docs', label: 'AI 하자 기준자료 관리', icon: 'fa-solid fa-file-shield' },
   { href: '/admin/login-history',    label: '로그인 이력',       icon: 'fa-solid fa-right-to-bracket' },
   { href: '/admin/user-audit',       label: '계정 변경 이력',     icon: 'fa-solid fa-clock-rotate-left' },
 ]
+
+// 감사이력은 관리 섹션 항목이지만, canAccessAdminSettings와는 별개인 canAccessAudit 권한으로
+// 독립적으로 게이팅된다(관리자 설정 접근 권한이 없어도 감사이력만 볼 수 있는 역할이 있을 수 있음).
+// adminItems 배열에 합치지 않고 별도로 두어 이 독립 게이팅을 그대로 유지한다.
+const auditItem = { href: '/audit', label: '감사이력', icon: 'fa-solid fa-clipboard-list' }
 
 // 역할과 무관하게 모든 사용자에게 노출 — 관리자 설정 섹션 바로 아래에 배치되지만
 // canAccessAdminSettings 게이트 밖에서 항상 렌더링한다.
@@ -129,21 +133,24 @@ export default function SideNav() {
         >
           분석
         </p>
-        {analysisItems.filter(item => item.href !== '/audit' || canAccessAudit(role)).map(item => (
+        {analysisItems.map(item => (
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))}
 
-        {canAccessAdminSettings(role) && (
+        {(canAccessAdminSettings(role) || canAccessAudit(role)) && (
           <>
             <p
               className="font-bold uppercase px-2"
               style={{ fontSize: '0.6rem', letterSpacing: '0.09em', color: 'rgba(255,255,255,0.25)', paddingTop: 14, paddingBottom: 5 }}
             >
-              관리자 설정
+              관리
             </p>
-            {adminItems.map(item => (
+            {canAccessAdminSettings(role) && adminItems.map(item => (
               <NavItem key={item.href} {...item} active={isActive(item.href)} />
             ))}
+            {canAccessAudit(role) && (
+              <NavItem key={auditItem.href} {...auditItem} active={isActive(auditItem.href)} />
+            )}
           </>
         )}
 

@@ -97,6 +97,16 @@ export function needsRecheck(defect: Defect): boolean {
   return defect.status === 'recheck_needed'
 }
 
+// 처리기한(예상완료일)이 24시간 이내로 임박했지만 아직 지연되지는 않은 건 — Executive Dashboard SLA 임박 KPI용.
+export function isSlaImminent(defect: Defect): boolean {
+  if (!defect.expectedCompletionDate) return false
+  if (defect.status === 'completed' || defect.status === 'hold' || defect.status === 'action_done') return false
+  if (isOverdue(defect)) return false
+  const deadline = new Date(`${defect.expectedCompletionDate}T23:59:59`).getTime()
+  const hoursLeft = (deadline - Date.now()) / (1000 * 60 * 60)
+  return hoursLeft >= 0 && hoursLeft <= 24
+}
+
 // 진행중·조치예정·지연·재점검 중 하나라도 해당하면 "미완결" (동일 건이 여러 조건에 겹쳐도 1건으로만 집계)
 export function isUnresolved(defect: Defect): boolean {
   return isInProgressStatus(defect) || isScheduled(defect) || isOverdue(defect) || needsRecheck(defect)
