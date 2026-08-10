@@ -97,7 +97,7 @@ export function needsRecheck(defect: Defect): boolean {
   return defect.status === 'recheck_needed'
 }
 
-// 처리기한(예상완료일)이 24시간 이내로 임박했지만 아직 지연되지는 않은 건 — Executive Dashboard SLA 임박 KPI용.
+// 처리기한(예상완료일)이 24시간 이내로 임박했지만 아직 지연되지는 않은 건 — Executive Dashboard 처리기한 임박 KPI용.
 export function isSlaImminent(defect: Defect): boolean {
   if (!defect.expectedCompletionDate) return false
   if (defect.status === 'completed' || defect.status === 'hold' || defect.status === 'action_done') return false

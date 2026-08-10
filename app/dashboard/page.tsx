@@ -10,7 +10,7 @@ import { useStore, type Defect } from '@/lib/store'
 import {
   isOverdue, getDisplayCost, SEVERITY_META, type SeverityKey, needsTodayAction, isSlaImminent,
   isInProgressStatus, isKpiCompleted, filterByOccurredPeriod, sumCostSummary,
-  type StandardPeriodType, STANDARD_PERIOD_OPTIONS, computeStandardPeriod, isScheduled, isUnresolved,
+  type StandardPeriodType, STANDARD_PERIOD_OPTIONS, computeStandardPeriod, isScheduled, isUnresolved, isRecurring,
 } from '@/lib/designTokens'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { generateActionPlanOpinion } from '@/lib/aiReportService'
@@ -108,11 +108,11 @@ export default function DashboardPage() {
   const lastMonthUnresolved = lastMonthDefects.filter(isUnresolved).length
   const { confirmed: lastMonthConfirmedCost, pending: lastMonthEstimatedCost } = sumCostSummary(lastMonthDefects)
 
-  const kpiCards: { key: string; label: string; icon: string; value: string; accent: string; cur: number; prev: number; tone: Tone }[] = [
+  const kpiCards: { key: string; label: string; icon: string; value: string; accent: string; cur: number; prev: number; tone: Tone; tooltip?: string }[] = [
     { key: 'new', label: '신규 접수', icon: 'fa-solid fa-file-circle-plus', value: `${kpiNew}건`, accent: BLUE, cur: kpiNew, prev: lastMonthNew, tone: 'lowerBetter' },
     { key: 'inprogress', label: '진행 중', icon: 'fa-solid fa-hourglass-half', value: `${kpiInProgress}건`, accent: ORANGE, cur: kpiInProgress, prev: lastMonthInProgress, tone: 'neutral' },
     { key: 'scheduled', label: '조치 예정', icon: 'fa-solid fa-calendar-check', value: `${kpiScheduled}건`, accent: GREEN, cur: kpiScheduled, prev: lastMonthScheduled, tone: 'neutral' },
-    { key: 'sla', label: 'SLA 임박', icon: 'fa-solid fa-bell', value: `${kpiSlaImminent}건`, accent: RED, cur: kpiSlaImminent, prev: lastMonthSlaImminent, tone: 'lowerBetter' },
+    { key: 'sla', label: '처리기한 임박', icon: 'fa-solid fa-bell', value: `${kpiSlaImminent}건`, accent: RED, cur: kpiSlaImminent, prev: lastMonthSlaImminent, tone: 'lowerBetter', tooltip: '목표 처리기한까지 24시간 이내로 남은 하자' },
     { key: 'completed', label: '조치 완료', icon: 'fa-solid fa-circle-check', value: `${kpiCompleted}건`, accent: GREEN, cur: kpiCompleted, prev: lastMonthCompleted, tone: 'higherBetter' },
     { key: 'unresolved', label: '미완결 합계', icon: 'fa-solid fa-list-check', value: `${kpiUnresolved}건`, accent: BLUE, cur: kpiUnresolved, prev: lastMonthUnresolved, tone: 'lowerBetter' },
     { key: 'estCost', label: '예상 비용', icon: 'fa-solid fa-coins', value: fmtKRW(kpiEstimatedCost), accent: ORANGE, cur: kpiEstimatedCost, prev: lastMonthEstimatedCost, tone: 'lowerBetter' },
@@ -129,6 +129,11 @@ export default function DashboardPage() {
     .filter(needsTodayAction)
     .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9) || b.recurrenceCount - a.recurrenceCount)
     .slice(0, 3)
+  // 반복 하자 TOP5 — 기존 recurrenceCount/isRecurring(재발 이력) 데이터를 그대로 사용, 새 계산 로직 없음.
+  const recurringTop5 = [...periodDefects]
+    .filter(isRecurring)
+    .sort((a, b) => b.recurrenceCount - a.recurrenceCount)
+    .slice(0, 5)
 
   // 이번 달 비용 현황 — 조회기간 선택과 무관하게 항상 이번 달(달력월) 고정(기존 관례와 동일).
   const thisMonthPeriod = computeStandardPeriod('month', null, null)
@@ -234,7 +239,7 @@ export default function DashboardPage() {
         {/* 1행 — KPI 8개 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 20 }}>
           {kpiCards.map(k => (
-            <div key={k.key} style={{ ...card, padding: '24px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div key={k.key} title={k.tooltip} style={{ ...card, padding: '24px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ width: 44, height: 44, borderRadius: 12, background: k.accent + '16', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <i className={k.icon} style={{ fontSize: '1.05rem', color: k.accent }} />
               </div>
@@ -251,9 +256,9 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* 2행 — 위험 하자 TOP5 / 오늘 우선처리 TOP3 / 이번 달 비용 현황 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 20, alignItems: 'start' }}>
-          <div style={card}>
+        {/* 2행 — 위험 하자 TOP5 / 반복 하자 TOP5 / 오늘 우선처리 TOP3 / 이번 달 비용 현황 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+          <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
             <div style={{ ...cardPad, paddingBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={sectionTitle}><i className="fa-solid fa-triangle-exclamation" style={{ color: RED }} /> 위험 하자 TOP 5</span>
               <Link href="/defects?filter=overdue" style={{ fontSize: '0.76rem', color: BLUE, textDecoration: 'none', fontWeight: 600 }}>더보기 <i className="fa-solid fa-chevron-right" style={{ fontSize: '0.62rem' }} /></Link>
@@ -289,7 +294,42 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div style={card}>
+          <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ ...cardPad, paddingBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={sectionTitle}><i className="fa-solid fa-rotate" style={{ color: BLUE }} /> 반복 하자 TOP 5</span>
+              <Link href="/defects?filter=recurring" style={{ fontSize: '0.76rem', color: BLUE, textDecoration: 'none', fontWeight: 600 }}>더보기 <i className="fa-solid fa-chevron-right" style={{ fontSize: '0.62rem' }} /></Link>
+            </div>
+            {recurringTop5.length === 0 ? (
+              <div style={{ padding: '20px 24px 26px', fontSize: '0.8rem', color: '#aab' }}>반복 하자가 없습니다.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #f0f1f3' }}>
+                    {['순위', '하자명', '위치', '카테고리', '반복횟수', '최근발생일'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '0.63rem', fontWeight: 700, color: '#8a94a6', whiteSpace: 'nowrap' as const }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {recurringTop5.map((d, i) => {
+                    const cat = state.categories.find(c => c.id === d.categoryId)
+                    return (
+                      <tr key={d.id} style={{ borderBottom: i < recurringTop5.length - 1 ? '1px solid #f7f8fa' : 'none' }}>
+                        <td style={{ padding: '10px 10px 10px 24px', fontSize: '0.74rem', color: '#8a94a6' }}>{i + 1}</td>
+                        <td style={{ padding: '10px' }}><Link href={`/defects/${d.id}`} style={{ fontSize: '0.78rem', fontWeight: 600, color: '#0a2540', textDecoration: 'none' }}>{d.title}</Link></td>
+                        <td style={{ padding: '10px', fontSize: '0.72rem', color: '#697386', whiteSpace: 'nowrap' as const }}>{d.locationText || '-'}</td>
+                        <td style={{ padding: '10px', fontSize: '0.72rem', color: '#697386', whiteSpace: 'nowrap' as const }}>{cat?.name ?? '-'}</td>
+                        <td style={{ padding: '10px', fontSize: '0.72rem', fontWeight: 700, color: BLUE }}>{d.recurrenceCount}회</td>
+                        <td style={{ padding: '10px 24px 10px 10px', fontSize: '0.72rem', color: '#697386', whiteSpace: 'nowrap' as const }}>{fmtDate(d.lastOccurredAt)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
             <div style={{ ...cardPad, paddingBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={sectionTitle}><i className="fa-solid fa-bolt" style={{ color: ORANGE }} /> 오늘 우선처리 TOP 3</span>
               <Link href="/defects?filter=today" style={{ fontSize: '0.76rem', color: BLUE, textDecoration: 'none', fontWeight: 600 }}>더보기 <i className="fa-solid fa-chevron-right" style={{ fontSize: '0.62rem' }} /></Link>
@@ -321,11 +361,11 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div style={card}>
+          <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
             <div style={{ ...cardPad, paddingBottom: 14 }}>
               <span style={sectionTitle}><i className="fa-solid fa-won-sign" style={{ color: GREEN }} /> 이번 달 비용 현황</span>
             </div>
-            <div style={{ padding: '4px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ padding: '4px 24px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16, flex: 1 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
                 {[
                   { label: '예상 비용', value: fmtKRW(thisMonthCost.pending), color: ORANGE },
