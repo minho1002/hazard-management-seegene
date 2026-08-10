@@ -33,8 +33,12 @@ body {
 .rpt-kpi{flex:1;border:1px solid #e3e8ef;border-radius:7px;padding:12px 10px;text-align:center;position:relative;overflow:hidden}
 .rpt-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
 .rpt-kpi.ka::before{background:#635bff}.rpt-kpi.kb::before{background:#1d6dc2}.rpt-kpi.kc::before{background:#e8960c}.rpt-kpi.kd::before{background:#0f7850}.rpt-kpi.ke::before{background:#be1044}
-.rpt-kpi-lbl{font-size:7.5pt;font-weight:700;text-transform:uppercase;color:#697386;margin-bottom:6px}
-.rpt-kpi-v{font-size:18pt;font-weight:800;letter-spacing:-.03em;line-height:1}
+.rpt-kpi-lbl{font-size:7.5pt;font-weight:700;text-transform:uppercase;color:#697386;margin-bottom:6px;white-space:nowrap}
+/* word-break:keep-all — 한글은 브라우저 기본 줄바꿈 규칙상 숫자와 글자 사이(예: "475,000"과 "원")에서도
+   줄이 바뀔 수 있어, 값이 카드 폭보다 길면 단위 글자("원"/"건" 등)만 다음 줄로 떨어져 나간다.
+   keep-all로 이를 막고, font-size는 값 길이에 따라 JS(lib/reportExportHtml.ts)가 인라인으로 줄여
+   카드 폭 안에서 항상 한 줄로 보이게 한다. */
+.rpt-kpi-v{font-size:18pt;font-weight:800;letter-spacing:-.03em;line-height:1;word-break:keep-all;white-space:nowrap}
 .rpt-kpi-u{font-size:7.5pt;color:#697386;margin-top:3px}
 .rpt-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .rpt-tbl{width:100%;border-collapse:collapse;font-size:9pt}

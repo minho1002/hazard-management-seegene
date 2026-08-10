@@ -14,6 +14,17 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// KPI 카드 폭(6열 기준 약 90px)에 값이 한 줄로 들어가도록 글자 수에 따라 글자 크기를 단계적으로
+// 줄인다 — "475,000원"처럼 긴 금액 문자열이 기본 18pt에서 카드 폭을 넘어가는 문제를 막는다.
+function kpiValueFontSize(value: string): number {
+  const len = value.length
+  if (len <= 4) return 18
+  if (len <= 6) return 15.5
+  if (len <= 8) return 13
+  if (len <= 10) return 11
+  return 9.5
+}
+
 const SLIDE_HEADER_COLORS = ['#1e3a5f', '#9f1239', '#3730a3', '#065f46', '#78350f']
 
 function renderSection(section: ReportSection): string {
@@ -21,7 +32,7 @@ function renderSection(section: ReportSection): string {
     return `<div class="rpt-kpi-row">${section.kpiItems.map(item => `
       <div class="rpt-kpi" style="border-left:3px solid ${safeColor(item.color, '#635bff')}">
         <div class="rpt-kpi-lbl">${esc(item.label)}</div>
-        <div class="rpt-kpi-v">${esc(item.value)}</div>
+        <div class="rpt-kpi-v" style="font-size:${kpiValueFontSize(item.value)}pt">${esc(item.value)}</div>
         ${item.sub ? `<div class="rpt-kpi-u">${esc(item.sub)}</div>` : ''}
       </div>`).join('')}</div>`
   }
