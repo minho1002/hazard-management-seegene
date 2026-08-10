@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   Chart as ChartJS, ArcElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler,
@@ -30,6 +30,8 @@ function fmtKRW(n: number) {
   return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(n)
 }
 function ymd(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+// 조회기간 표시는 "2026.08.01" 형식(점 구분)으로 통일 — 내부 계산용 YYYY-MM-DD 값은 그대로 두고 표시만 바꾼다.
+function fmtDot(s: string | null): string { return s ? s.replaceAll('-', '.') : '' }
 
 // 지연일수 — 위험 하자 TOP5에서 재사용(기존 Executive Dashboard 로직 그대로).
 function overdueDaysOf(d: Defect): number {
@@ -61,6 +63,9 @@ export default function DashboardPage() {
   const [periodType, setPeriodType] = useState<StandardPeriodType>('month')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
+  const [updatedAt, setUpdatedAt] = useState('')
+
+  useEffect(() => { setUpdatedAt(new Date().toLocaleString('ko-KR')) }, [])
 
   const period = computeStandardPeriod(periodType, customFrom || null, customTo || null)
   const { from, to } = period
@@ -178,29 +183,49 @@ export default function DashboardPage() {
             <h1 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.01em' }}>안녕하세요, 관리자님!</h1>
             <div style={{ fontSize: '0.82rem', color: '#8a94a6', marginTop: 4 }}>오늘도 안전하고 쾌적한 시설 관리를 응원합니다.</div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
-            {STANDARD_PERIOD_OPTIONS.filter(o => o.key !== 'week' && o.key !== 'year' && o.key !== 'all').map(opt => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
+              {STANDARD_PERIOD_OPTIONS.filter(o => o.key !== 'all').map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => setPeriodType(opt.key)}
+                  style={{
+                    padding: '8px 18px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: 'none', fontFamily: 'inherit',
+                    background: periodType === opt.key ? BLUE : '#F0F2F5',
+                    color: periodType === opt.key ? '#fff' : '#425466',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              {periodType === 'custom' && (
+                <>
+                  <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e3e8ef', fontSize: '0.78rem', fontFamily: 'inherit' }} />
+                  <span style={{ color: '#b0bac6' }}>~</span>
+                  <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e3e8ef', fontSize: '0.78rem', fontFamily: 'inherit' }} />
+                </>
+              )}
+            </div>
+            {/* 조회기간 — 선택한 버튼/사용자지정 날짜가 바뀌면 즉시 갱신되며, 아래 KPI·차트·리스트가 모두
+                이 기간 하나만 기준으로 계산된다는 것을 한눈에 알 수 있게 항상 표시한다. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#F0F2F5', borderRadius: 10, padding: '8px 14px' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#425466', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const }}>
+                <i className="fa-regular fa-calendar" style={{ color: BLUE }} />
+                조회기간 : {from && to ? <strong style={{ color: '#0a2540', fontWeight: 700 }}>{fmtDot(from)} ~ {fmtDot(to)}</strong> : <span style={{ color: '#aab' }}>시작일과 종료일을 선택해주세요</span>}
+              </span>
+              <span style={{ width: 1, height: 14, background: '#dfe3e8' }} />
               <button
-                key={opt.key}
-                onClick={() => setPeriodType(opt.key)}
-                style={{
-                  padding: '8px 18px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: 'none', fontFamily: 'inherit',
-                  background: periodType === opt.key ? BLUE : '#F0F2F5',
-                  color: periodType === opt.key ? '#fff' : '#425466',
-                }}
+                onClick={() => setUpdatedAt(new Date().toLocaleString('ko-KR'))}
+                title="화면을 최신 상태로 갱신합니다"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600, color: '#425466', fontFamily: 'inherit', padding: 0 }}
               >
-                {opt.label}
+                <i className="fa-solid fa-arrows-rotate" style={{ color: BLUE }} /> 새로고침
               </button>
-            ))}
-            {periodType === 'custom' && (
-              <>
-                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e3e8ef', fontSize: '0.78rem', fontFamily: 'inherit' }} />
-                <span style={{ color: '#b0bac6' }}>~</span>
-                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e3e8ef', fontSize: '0.78rem', fontFamily: 'inherit' }} />
-              </>
-            )}
-            {(from || to) && <span style={{ fontSize: '0.76rem', color: '#8a94a6', padding: '0 4px' }}>{from ?? '-'} ~ {to ?? '-'}</span>}
+            </div>
           </div>
+        </div>
+        <div style={{ fontSize: '0.68rem', color: '#aab', marginTop: 10, textAlign: 'right' as const }}>
+          KPI · 차트 · 리스트 모두 위 조회기간 기준으로 계산됩니다{updatedAt && <> · 업데이트 {updatedAt}</>}
         </div>
       </div>
 
