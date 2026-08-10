@@ -22,23 +22,18 @@ const analysisItems = [
   { href: '/reports/ai', label: 'AI 보고서',    icon: 'fa-solid fa-wand-magic-sparkles' },
   { href: '/ai',         label: 'AI 어시스턴트', icon: 'fa-solid fa-robot' },
 ]
-// AI 하자 기준자료는 관리자 설정 권한(canAccessAdminSettings)으로 게이팅되므로 analysisItems에
-// 합치지 않고 별도로 두어 기존 권한 체크를 그대로 유지한다.
-const aiReferenceItem = { href: '/admin/ai-reference-docs', label: 'AI 하자 기준자료', icon: 'fa-solid fa-file-shield' }
-
-// 관리 — 사용자관리/권한관리/로그인이력 (canAccessAdminSettings로 게이팅)
-const adminItems = [
-  { href: '/admin/users',         label: '사용자 관리', icon: 'fa-solid fa-users-gear' },
-  { href: '/admin/permissions',   label: '권한 관리',   icon: 'fa-solid fa-shield-halved' },
-  { href: '/admin/login-history', label: '로그인 이력', icon: 'fa-solid fa-right-to-bracket' },
-]
-// 기존 계정 변경 이력 메뉴 — 삭제하지 않고 관리 섹션 맨 뒤에 유지한다(canAccessAdminSettings로 게이팅).
-const userAuditItem = { href: '/admin/user-audit', label: '계정 변경 이력', icon: 'fa-solid fa-clock-rotate-left' }
-
-// 감사이력은 관리 섹션 항목이지만, canAccessAdminSettings와는 별개인 canAccessAudit 권한으로
-// 독립적으로 게이팅된다(관리자 설정 접근 권한이 없어도 감사이력만 볼 수 있는 역할이 있을 수 있음).
-// adminItems 배열에 합치지 않고 별도로 두어 이 독립 게이팅을 그대로 유지한다.
-const auditItem = { href: '/audit', label: '감사이력', icon: 'fa-solid fa-clipboard-list' }
+// 관리 메뉴 통합(2026-08) — AI 하자 기준자료/사용자 관리/권한 관리/로그인 이력/계정 변경 이력/감사이력
+// 6개로 세분화되어 있던 관리 메뉴를 4개로 단순화한다. 각 항목이 가리키는 화면 자체는 그대로이고
+// (사용자·권한 관리, 시스템 이력은 탭 구조로 통합된 새 화면), 권한 게이팅도 원래 화면 기준을 유지한다.
+// AI 기준자료 관리 — canAccessAdminSettings로 게이팅(기존과 동일).
+const aiReferenceItem = { href: '/admin/ai-reference-docs', label: 'AI 기준자료 관리', icon: 'fa-solid fa-file-shield' }
+// 사용자·권한 관리 — 구 사용자 관리 + 권한 관리, 둘 다 canAccessAdminSettings로 게이팅되던 화면이라
+// 게이팅 조건은 그대로 유지된다.
+const usersPermissionsItem = { href: '/admin/users-permissions', label: '사용자·권한 관리', icon: 'fa-solid fa-users-gear' }
+// 시스템 이력 — 구 로그인 이력·계정 변경 이력(canAccessAdminSettings) + 감사이력(canAccessAudit,
+// 독립 권한). 메뉴 항목 자체는 둘 중 하나라도 있으면 노출하고, 실제 각 탭의 표시 여부는
+// /admin/system-history 내부에서 원래 권한 기준 그대로 다시 판단한다.
+const systemHistoryItem = { href: '/admin/system-history', label: '시스템 이력', icon: 'fa-solid fa-clock-rotate-left' }
 
 // 역할과 무관하게 모든 사용자에게 노출 — 관리 섹션의 일부로 표시되지만
 // 권한 게이트 밖에서 항상 렌더링한다.
@@ -142,9 +137,6 @@ export default function SideNav() {
         {analysisItems.map(item => (
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))}
-        {canAccessAdminSettings(role) && (
-          <NavItem key={aiReferenceItem.href} {...aiReferenceItem} active={isActive(aiReferenceItem.href)} />
-        )}
 
         {/* 사용자 가이드는 역할과 무관하게 항상 노출되므로 관리 섹션 헤더도 항상 표시한다 */}
         <p
@@ -153,18 +145,18 @@ export default function SideNav() {
         >
           관리
         </p>
-        {canAccessAdminSettings(role) && adminItems.map(item => (
-          <NavItem key={item.href} {...item} active={isActive(item.href)} />
-        ))}
-        {canAccessAudit(role) && (
-          <NavItem key={auditItem.href} {...auditItem} active={isActive(auditItem.href)} />
+        {canAccessAdminSettings(role) && (
+          <NavItem key={aiReferenceItem.href} {...aiReferenceItem} active={isActive(aiReferenceItem.href)} />
+        )}
+        {canAccessAdminSettings(role) && (
+          <NavItem key={usersPermissionsItem.href} {...usersPermissionsItem} active={isActive(usersPermissionsItem.href)} />
+        )}
+        {(canAccessAdminSettings(role) || canAccessAudit(role)) && (
+          <NavItem key={systemHistoryItem.href} {...systemHistoryItem} active={isActive(systemHistoryItem.href)} />
         )}
         {helpItems.map(item => (
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))}
-        {canAccessAdminSettings(role) && (
-          <NavItem key={userAuditItem.href} {...userAuditItem} active={isActive(userAuditItem.href)} />
-        )}
       </nav>
 
       {/* 로그인 사용자 정보 */}
