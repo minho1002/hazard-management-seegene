@@ -241,7 +241,9 @@ export function getCostDiff(defect: Defect): number | null {
 }
 
 export function needsTodayAction(defect: Defect): boolean {
-  if (defect.status === 'completed') return false
+  // 조치가 이미 끝난 건(action_done)·최종완료·보류 건은 긴급/반복이어도 "오늘 우선처리" 대상이 아니다
+  // (isOverdue/isScheduled와 동일한 제외 기준 — 조치완료 건이 TOP3·오늘 우선처리 필터에 잘못 노출되던 버그 수정).
+  if (defect.status === 'completed' || defect.status === 'hold' || defect.status === 'action_done') return false
   if (defect.status === 'recheck_needed') return true
   if (isOverdue(defect)) return true
   if (defect.severity === 'critical') return true
