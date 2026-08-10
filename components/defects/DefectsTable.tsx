@@ -51,7 +51,7 @@ export default function DefectsTable({ defects, filterActive, canSeeDeleted, sho
           <thead>
             <tr style={{ background: '#fafbfc', borderBottom: '1px solid #e3e8ef' }}>
               {[
-                '종결여부', '발생일', '조치예정일', '분야/명', '사진대지', '외주업체', '처리비용', '결제증빙/수단', '상태', '위치', '작업',
+                '종결여부', '발생일', '조치예정일', '조치완료일', '분야/명', '사진대지', '외주업체', '처리비용', '결제증빙/수단', '상태', '위치', '작업',
               ].map(h => (
                 <th key={h} style={{ textAlign: 'left', padding: '7px 12px', fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
@@ -60,7 +60,7 @@ export default function DefectsTable({ defects, filterActive, canSeeDeleted, sho
           <tbody>
             {defects.length === 0 ? (
               <tr>
-                <td colSpan={11}>
+                <td colSpan={12}>
                   <EmptyState
                     icon="fa-solid fa-inbox"
                     message={filterActive ? '조건에 맞는 하자가 없습니다.' : '등록된 하자가 없습니다.'}
@@ -104,6 +104,18 @@ export default function DefectsTable({ defects, filterActive, canSeeDeleted, sho
                   {/* 조치예정일 */}
                   <td style={{ padding: '7px 12px', verticalAlign: 'middle', fontSize: '0.74rem', whiteSpace: 'nowrap', color: overdue ? COLORS.warning : '#697386', fontWeight: overdue ? 700 : 400 }}>
                     {d.expectedCompletionDate ? fmtDate(d.expectedCompletionDate) : '-'}
+                  </td>
+
+                  {/* 조치완료일 — 조치예정일(계획일)과 별개로 실제 완료일만 표시. 값이 없는데
+                      상태만 조치완료/완료인 과거 데이터는 "미입력"으로 눈에 띄게 표시한다(상세화면과 동일 기준). */}
+                  <td style={{ padding: '7px 12px', verticalAlign: 'middle', fontSize: '0.74rem', whiteSpace: 'nowrap' }}>
+                    {d.actionCompletedAt ? (
+                      <span style={{ color: '#697386' }}>{fmtDate(d.actionCompletedAt)}</span>
+                    ) : (d.status === 'action_done' || d.status === 'completed') ? (
+                      <span style={{ color: COLORS.danger, fontWeight: 700 }}>미입력</span>
+                    ) : (
+                      <span style={{ color: '#697386' }}>-</span>
+                    )}
                   </td>
 
                   {/* 분야/명 */}
