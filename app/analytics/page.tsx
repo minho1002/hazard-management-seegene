@@ -472,7 +472,6 @@ export default function OperationsStatusPage() {
                 { key: 'critical', label: '긴급만', color: COLORS.critical },
                 { key: 'overdue', label: '지연만', color: COLORS.warning },
                 { key: 'recurring', label: '반복만', color: COLORS.action },
-                { key: 'nophoto', label: '조치후 사진 미첨부', color: COLORS.warning },
               ] as const).map(f => (
                 <button
                   key={f.key}
