@@ -156,10 +156,10 @@ export default function OperationsStatusPage() {
   // (칩으로는 today/critical/overdue/recurring/nophoto만 노출하고, 나머지는 좌측 미완결현황
   // 카드 클릭으로 진입한다 — 카드 라벨과 1:1 대응하는 키를 그대로 쓴다.)
   const listDefects = filteredDefects.filter(d => {
-    if (quickFilter === 'today' && !needsTodayAction(d)) return false
+    if (quickFilter === 'today' && !needsTodayAction(d, nonDeleted)) return false
     if (quickFilter === 'critical' && !(d.severity === 'critical' && d.status !== 'completed')) return false
     if (quickFilter === 'overdue' && !isOverdue(d)) return false
-    if (quickFilter === 'recurring' && !(isRecurring(d) && d.status !== 'completed')) return false
+    if (quickFilter === 'recurring' && !(isRecurring(d, nonDeleted) && d.status !== 'completed')) return false
     if (quickFilter === 'recheck' && d.status !== 'recheck_needed') return false
     if (quickFilter === 'inprogress' && !isInProgressStatus(d)) return false
     if (quickFilter === 'scheduled' && !isScheduled(d)) return false
@@ -184,7 +184,7 @@ export default function OperationsStatusPage() {
   ]
   const actionDoneItems = filteredDefects.filter(d => d.status === 'action_done')
   const completedItems = filteredDefects.filter(isKpiCompleted)
-  const recurringItems = filteredDefects.filter(isRecurring)
+  const recurringItems = filteredDefects.filter(d => isRecurring(d, nonDeleted))
 
   const { confirmed: periodConfirmedCost, pending: periodEstimatedPendingCost } = sumCostSummary(filteredDefects)
   function costBucket(d: Defect): '우리측' | '타업체' | '기타' {
@@ -198,7 +198,7 @@ export default function OperationsStatusPage() {
 
   const sevRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
   const top3 = [...filteredDefects]
-    .filter(needsTodayAction)
+    .filter(d => needsTodayAction(d, nonDeleted))
     .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9) || b.recurrenceCount - a.recurrenceCount)
     .slice(0, 3)
 

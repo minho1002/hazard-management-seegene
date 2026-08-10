@@ -77,8 +77,21 @@ export function isOverdue(defect: Defect): boolean {
   return daysSince(defect.firstOccurredAt) >= threshold
 }
 
-export function isRecurring(defect: Defect): boolean {
-  return defect.recurrenceCount > 0
+// 반복 하자 판단 — 상세화면 배지, 대시보드 "반복 하자 TOP5", 운영현황 KPI 등 모든 화면이 이 함수 하나로
+// 판단을 통일한다(과거에는 화면마다 recurrenceCount/recurringLevel을 따로 확인해 결과가 서로 달랐음).
+// 1) 관리자가 "반복 확정"으로 명시적으로 확정했거나(recurringLevel), 처리 이력에 재발 기록(recurrenceCount)이
+//    있으면 반복 하자다 — 둘 중 하나만 있어도 인정한다.
+// 2) allDefects(삭제되지 않은 전체 하자 이력)를 함께 넘기면, 동일 위치+동일 카테고리로 전체 기간에 2건 이상
+//    발생한 경우도 반복 하자로 추가 판단한다. allDefects는 반드시 조회기간으로 잘리지 않은 전체 이력이어야
+//    하며(요구사항: "반복 여부 판단은 전체 과거 이력으로 계산"), 생략하면 1)만으로 판단한다(기존 호출부 호환).
+export function isRecurring(defect: Defect, allDefects?: Defect[]): boolean {
+  if (defect.recurringLevel === '반복 확정') return true
+  if (defect.recurrenceCount > 0) return true
+  if (!allDefects || !defect.locationText) return false
+  const sameSpotCount = allDefects.filter(d =>
+    !d.deletedAt && d.locationText === defect.locationText && d.categoryId === defect.categoryId
+  ).length
+  return sameSpotCount >= 2
 }
 
 // 대시보드 "미완결 현황" 카드 — 접수·조치중 상태(최종완료/조치완료/재점검/보류 제외)
@@ -240,14 +253,14 @@ export function getCostDiff(defect: Defect): number | null {
   return defect.finalCost - defect.estimatedCost
 }
 
-export function needsTodayAction(defect: Defect): boolean {
+export function needsTodayAction(defect: Defect, allDefects?: Defect[]): boolean {
   // 조치가 이미 끝난 건(action_done)·최종완료·보류 건은 긴급/반복이어도 "오늘 우선처리" 대상이 아니다
   // (isOverdue/isScheduled와 동일한 제외 기준 — 조치완료 건이 TOP3·오늘 우선처리 필터에 잘못 노출되던 버그 수정).
   if (defect.status === 'completed' || defect.status === 'hold' || defect.status === 'action_done') return false
   if (defect.status === 'recheck_needed') return true
   if (isOverdue(defect)) return true
   if (defect.severity === 'critical') return true
-  if (isRecurring(defect)) return true
+  if (isRecurring(defect, allDefects)) return true
   return false
 }
 

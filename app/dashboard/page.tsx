@@ -126,12 +126,14 @@ export default function DashboardPage() {
     .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9) || overdueDaysOf(b) - overdueDaysOf(a))
     .slice(0, 5)
   const top3 = [...periodDefects]
-    .filter(needsTodayAction)
+    .filter(d => needsTodayAction(d, allDefects))
     .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9) || b.recurrenceCount - a.recurrenceCount)
     .slice(0, 3)
-  // 반복 하자 TOP5 — 기존 recurrenceCount/isRecurring(재발 이력) 데이터를 그대로 사용, 새 계산 로직 없음.
+  // 반복 하자 TOP5 — isRecurring(designTokens.ts)으로 판단 기준을 상세화면/운영현황과 통일.
+  // allDefects(전체 이력, !deletedAt)를 넘겨 "동일 위치+카테고리 2건 이상" 조건까지 전체 기간 기준으로 판정하고,
+  // 그중 조회기간(periodDefects)에 해당하는 건만 목록에 표시한다.
   const recurringTop5 = [...periodDefects]
-    .filter(isRecurring)
+    .filter(d => isRecurring(d, allDefects))
     .sort((a, b) => b.recurrenceCount - a.recurrenceCount)
     .slice(0, 5)
 

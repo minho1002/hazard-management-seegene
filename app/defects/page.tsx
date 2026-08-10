@@ -83,10 +83,10 @@ function DefectsPageInner() {
       return b.id - a.id
     })
     .filter(d => {
-      if (quickFilter === 'today' && !needsTodayAction(d)) return false
+      if (quickFilter === 'today' && !needsTodayAction(d, state.defects)) return false
       if (quickFilter === 'critical' && !(d.severity === 'critical' && d.status !== 'completed')) return false
       if (quickFilter === 'overdue' && !isOverdue(d)) return false
-      if (quickFilter === 'recurring' && !(isRecurring(d) && d.status !== 'completed')) return false
+      if (quickFilter === 'recurring' && !(isRecurring(d, state.defects) && d.status !== 'completed')) return false
       if (quickFilter === 'recheck' && d.status !== 'recheck_needed') return false
       if (quickFilter === 'inprogress' && !isInProgressStatus(d)) return false
       if (quickFilter === 'scheduled' && !isScheduled(d)) return false

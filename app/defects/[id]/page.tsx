@@ -351,7 +351,7 @@ export default function DefectDetailPage() {
         </div>
 
         {/* 판단 근거 */}
-        {(isOverdue(defect) || defect.recurrenceCount > 0 || defect.costType !== 'our' || getCostStatus(defect)) && (
+        {(isOverdue(defect) || isRecurring(defect, state.defects) || defect.costType !== 'our' || getCostStatus(defect)) && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
             {getCostStatus(defect) && (() => {
               const cs = getCostStatus(defect)!
@@ -367,9 +367,9 @@ export default function DefectDetailPage() {
                 🔶 지연 발생 ({defect.firstOccurredAt ? Math.floor((Date.now() - new Date(defect.firstOccurredAt).getTime()) / 86400000) : 0}일 경과)
               </span>
             )}
-            {isRecurring(defect) && (
+            {isRecurring(defect, state.defects) && (
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: COLORS.danger, background: '#FEF2F2', padding: '5px 10px', borderRadius: 999, border: '1px solid #FECACA' }}>
-                🔁 재발 {defect.recurrenceCount}회
+                🔁 {defect.recurrenceCount > 0 ? `재발 ${defect.recurrenceCount}회` : '반복 하자'}
               </span>
             )}
             {defect.costType !== 'our' && (

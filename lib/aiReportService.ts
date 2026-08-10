@@ -139,8 +139,8 @@ export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[]
   const prefix = periodLabel ? `${periodLabel} 기준` : '오늘'
   const open = defects.filter(d => d.status !== 'completed')
   const overdue = open.filter(isOverdue)
-  const todayItems = open.filter(needsTodayAction)
-  const recurring = open.filter(isRecurring)
+  const todayItems = open.filter(d => needsTodayAction(d))
+  const recurring = open.filter(d => isRecurring(d))
   const actionDoneAwaiting = defects.filter(d => d.status === 'action_done')
   const unresolvedCost = open.filter(d => getCostBearerStatus(d) === '미정')
   const unpaid = defects.filter(d => effCost(d) > 0 && getPaymentBadge(d, files)?.tone !== 'success')
