@@ -46,6 +46,7 @@ export default function EditDefectPage() {
     managerName: defectRaw?.managerName ?? '김관리',
     firstOccurredAt: defectRaw?.firstOccurredAt ?? new Date().toISOString().slice(0, 10),
     expectedCompletionDate: defectRaw?.expectedCompletionDate ?? '',
+    actionCompletedAt: defectRaw?.actionCompletedAt ?? '',
   }))
 
   if (!defectRaw) {
@@ -108,6 +109,10 @@ export default function EditDefectPage() {
       alert('예상완료일은 발생일보다 이후여야 합니다.')
       return
     }
+    if (form.actionCompletedAt && form.firstOccurredAt && form.actionCompletedAt < form.firstOccurredAt) {
+      alert('조치완료일은 발생일보다 이후여야 합니다.')
+      return
+    }
     const categoryId = form.categoryId === '__custom__'
       ? addCategory(customCategoryName)
       : (form.categoryId ? Number(form.categoryId) : null)
@@ -137,6 +142,7 @@ export default function EditDefectPage() {
       managerName: form.managerName || '김관리',
       firstOccurredAt: form.firstOccurredAt || null,
       expectedCompletionDate: form.expectedCompletionDate || null,
+      actionCompletedAt: form.actionCompletedAt || null,
     })
     router.push(`/defects/${defect.id}`)
   }
@@ -246,6 +252,11 @@ export default function EditDefectPage() {
                   <div>
                     <label style={labelCls}>예상완료일</label>
                     <input type="date" style={inputCls} value={form.expectedCompletionDate ?? ''} onChange={e => setField('expectedCompletionDate', e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={labelCls}>조치완료일</label>
+                    <input type="date" style={inputCls} value={form.actionCompletedAt ?? ''} onChange={e => setField('actionCompletedAt', e.target.value)} />
+                    <div style={{ fontSize: '0.66rem', color: '#aab', marginTop: 4 }}>과거에 조치완료일 없이 조치완료 처리된 건을 바로잡을 때만 사용하세요. 새로 조치완료 처리할 때는 상세 화면의 "조치완료로 전환" 버튼을 사용합니다.</div>
                   </div>
                   <div>
                     <label style={labelCls}>신고자</label>

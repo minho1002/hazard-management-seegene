@@ -363,9 +363,15 @@ export function getPaymentBadge(defect: Defect, files: DefectFile[]): PaymentBad
 export function getStatusTransitionError(
   defect: Defect,
   target: StatusKey,
-  ctx: { files: DefectFile[]; role: Role; actionContent?: string | null; actualCost?: number | null }
+  ctx: { files: DefectFile[]; role: Role; actionContent?: string | null; actualCost?: number | null; actionCompletedAt?: string | null }
 ): string | null {
   if (target === defect.status) return null
+
+  // 조치완료일을 지정하지 않으면 "조치완료" 상태로 전환할 수 없다 — 조치예정일(계획일)과
+  // 조치완료일(실제 완료일)이 혼동되어 완료일 없이 조치완료로 표시되던 문제를 막는다.
+  if (target === 'action_done' && !ctx.actionCompletedAt) {
+    return '조치완료일을 입력해야 조치완료로 전환할 수 있습니다.'
+  }
 
   if (target === 'completed') {
     if (!canApproveCompletion(ctx.role)) return '최종완료 승인 권한이 없습니다.'

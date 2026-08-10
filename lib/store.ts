@@ -559,6 +559,7 @@ export function useStore() {
     reason?: string | null
     actionContent?: string | null
     actualCost?: number | null
+    actionCompletedAt?: string | null
   }): { ok: boolean; error?: string } => {
     const current = loadState()
     const defect = current.defects.find(d => d.id === id)
@@ -569,6 +570,7 @@ export function useStore() {
       role: getCurrentRole(),
       actionContent: opts.actionContent,
       actualCost: opts.actualCost,
+      actionCompletedAt: opts.actionCompletedAt,
     })
     if (error) return { ok: false, error }
 
@@ -591,7 +593,9 @@ export function useStore() {
 
     const patch: Partial<Defect> = { status: target, totalCost }
     if (opts.actionContent) patch.lastActionContent = opts.actionContent
-    if (target === 'action_done') patch.actionCompletedAt = new Date().toISOString().slice(0, 10)
+    // 조치완료일은 사용자가 모달에서 지정한 날짜를 그대로 저장한다(검증은 getStatusTransitionError에서
+    // 이미 필수값으로 막았으므로 여기서는 값이 있다는 전제 하에 저장만 한다).
+    if (target === 'action_done') patch.actionCompletedAt = opts.actionCompletedAt || new Date().toISOString().slice(0, 10)
     // 조치완료 시 입력한 실제 비용도 비용 확정 흐름(finalCost)에 동일하게 반영해
     // 목록/대시보드/보고서 등 모든 화면이 하나의 확정 금액만 참조하도록 한다.
     if (target === 'action_done' && opts.actualCost != null) {

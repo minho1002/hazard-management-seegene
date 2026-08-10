@@ -75,7 +75,7 @@ export default function DefectDetailPage() {
     costAmount: '',
   })
   const [showActionDoneModal, setShowActionDoneModal] = useState(false)
-  const [actionDoneForm, setActionDoneForm] = useState({ actionContent: '', actualCost: '' })
+  const [actionDoneForm, setActionDoneForm] = useState({ actionContent: '', actualCost: '', actionCompletedAt: '' })
 
   const defectRaw = state.defects.find(d => d.id === parseInt(id))
 
@@ -159,12 +159,13 @@ export default function DefectDetailPage() {
     router.push('/defects')
   }
 
-  function applyStatusChange(target: StatusKey, opts?: { actionContent?: string; actualCost?: string; reason?: string | null }): boolean {
+  function applyStatusChange(target: StatusKey, opts?: { actionContent?: string; actualCost?: string; actionCompletedAt?: string; reason?: string | null }): boolean {
     const result = updateDefectStatus(defect.id, target, {
       changedBy: defect.managerName ?? null,
       reason: opts?.reason ?? null,
       actionContent: opts?.actionContent || null,
       actualCost: opts?.actualCost ? Number(opts.actualCost) : null,
+      actionCompletedAt: opts?.actionCompletedAt || null,
     })
     if (!result.ok) { alert(result.error); return false }
     return true
@@ -172,8 +173,13 @@ export default function DefectDetailPage() {
 
   function handleStatusSelect(target: string) {
     if (target === 'action_done') {
-      // 등록 시 입력해둔 예상 처리비용을 실제(확정) 비용의 초기값으로 제안 — 필요시 수정 후 확정
-      setActionDoneForm({ actionContent: defect.lastActionContent ?? '', actualCost: defect.estimatedCost != null ? String(defect.estimatedCost) : '' })
+      // 등록 시 입력해둔 예상 처리비용을 실제(확정) 비용의 초기값으로 제안 — 필요시 수정 후 확정.
+      // 조치완료일은 오늘 날짜를 기본값으로 제안하되, 반드시 지정해야만 전환할 수 있다(submitActionDone에서 검증).
+      setActionDoneForm({
+        actionContent: defect.lastActionContent ?? '',
+        actualCost: defect.estimatedCost != null ? String(defect.estimatedCost) : '',
+        actionCompletedAt: new Date().toISOString().slice(0, 10),
+      })
       setShowActionDoneModal(true)
       return
     }
@@ -188,6 +194,7 @@ export default function DefectDetailPage() {
   }
 
   function submitActionDone() {
+    if (!actionDoneForm.actionCompletedAt) { alert('조치완료일을 입력해야 합니다.'); return }
     if (applyStatusChange('action_done', actionDoneForm)) setShowActionDoneModal(false)
   }
 
@@ -397,6 +404,12 @@ export default function DefectDetailPage() {
                   ['비용유형', COST_LABELS[defect.costType] || defect.costType],
                   ['최초발생', fmtDate(defect.firstOccurredAt)],
                   ['조치예정일', defect.expectedCompletionDate ? fmtDate(defect.expectedCompletionDate) : '-'],
+                  // 조치예정일(계획일)과 별개로 실제 조치가 끝난 날짜만 "조치완료일"로 표시한다.
+                  // 값이 없는데 상태만 조치완료/완료인 경우(과거 데이터) "미입력"으로 눈에 띄게 표시해
+                  // 완료일 없이 조치완료로 보이는 문제를 화면에서 바로 확인할 수 있게 한다.
+                  ['조치완료일', defect.actionCompletedAt
+                    ? fmtDate(defect.actionCompletedAt)
+                    : ((defect.status === 'action_done' || defect.status === 'completed') ? '미입력' : '-')],
                   ['최근발생', fmtDate(defect.lastOccurredAt)],
                   ['재발횟수', `${defect.recurrenceCount || 0}회`],
                   ['예상비용', defect.estimatedCost != null ? fmtKRW(defect.estimatedCost) : '-'],
@@ -407,13 +420,14 @@ export default function DefectDetailPage() {
                     return `${diff > 0 ? '+' : ''}${fmtKRW(diff)}`
                   })()],
                   ['비용 확정일', defect.costConfirmedAt ? fmtDate(defect.costConfirmedAt) : '-'],
-                ].map(([k, v], i) => (
-                  <div key={k as string} style={{ padding: '12px 16px', borderBottom: i < 12 ? '1px solid #f0f4f8' : 'none', borderRight: i % 2 === 0 && i < 12 ? '1px solid #f0f4f8' : 'none' }}>
+                ].map(([k, v], i, arr) => (
+                  <div key={k as string} style={{ padding: '12px 16px', borderBottom: i < arr.length ? '1px solid #f0f4f8' : 'none', borderRight: i % 2 === 0 && i < arr.length ? '1px solid #f0f4f8' : 'none' }}>
                     <dt style={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#697386', marginBottom: 3 }}>{k}</dt>
                     <dd style={{
                       fontSize: '0.82rem', fontWeight: 600,
                       color: k === '확정비용' ? '#0f7850'
                         : k === '예상 대비 차액' ? (typeof v === 'string' && v.startsWith('+') ? '#DC2626' : (v !== '-' ? '#0f7850' : '#0a2540'))
+                        : k === '조치완료일' && v === '미입력' ? '#DC2626'
                         : '#0a2540',
                     }}>{v as string}</dd>
                   </div>
@@ -862,8 +876,13 @@ export default function DefectDetailPage() {
         >
           <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 430, maxWidth: '94vw', boxShadow: '0 8px 28px rgba(10,37,64,.13)', border: '1px solid #e3e8ef' }}>
             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0a2540', marginBottom: 4 }}>조치완료 처리</div>
-            <div style={{ fontSize: '0.72rem', color: '#697386', marginBottom: 16 }}>조치 내용과 실제 비용은 선택 입력입니다. 비워두고 바로 전환할 수 있습니다.</div>
+            <div style={{ fontSize: '0.72rem', color: '#697386', marginBottom: 16 }}>조치완료일은 필수 입력입니다. 조치 내용과 실제 비용은 선택 입력이며, 비워두고 전환할 수 있습니다.</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>조치완료일 *</label>
+                <input type="date" style={modalInputStyle} value={actionDoneForm.actionCompletedAt} onChange={e => setActionDoneForm(f => ({ ...f, actionCompletedAt: e.target.value }))} />
+                <span style={{ fontSize: '0.66rem', color: '#aab' }}>조치예정일(계획일)이 아니라 실제로 조치가 끝난 날짜를 입력하세요.</span>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>조치 내용</label>
                 <textarea style={{ ...modalInputStyle, resize: 'vertical', lineHeight: 1.6 }} rows={3} placeholder="예: 우레탄 방수 보강 시공 완료" value={actionDoneForm.actionContent} onChange={e => setActionDoneForm(f => ({ ...f, actionContent: e.target.value }))} />
@@ -876,7 +895,19 @@ export default function DefectDetailPage() {
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowActionDoneModal(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #e3e8ef', background: '#fff', color: '#425466', fontFamily: 'inherit' }}>취소</button>
-              <button onClick={submitActionDone} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid #635bff', background: '#635bff', color: '#fff', fontFamily: 'inherit' }}>조치완료로 전환</button>
+              <button
+                onClick={submitActionDone}
+                disabled={!actionDoneForm.actionCompletedAt}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 7, fontSize: '0.8rem', fontWeight: 600, fontFamily: 'inherit',
+                  cursor: actionDoneForm.actionCompletedAt ? 'pointer' : 'not-allowed',
+                  border: '1.5px solid #635bff',
+                  background: actionDoneForm.actionCompletedAt ? '#635bff' : '#b7b2fb',
+                  color: '#fff',
+                }}
+              >
+                조치완료로 전환
+              </button>
             </div>
           </div>
         </div>
