@@ -255,9 +255,20 @@ export function needsAfterPhoto(defect: Defect, files: DefectFile[]): boolean {
   return !files.some(f => f.defectId === defect.id && f.photoType === 'after')
 }
 
-// "종결 여부" — 최종완료(completed) 상태만 완전히 끝난 건으로 취급한다.
-export function isFullyClosed(defect: Defect): boolean {
-  return defect.status === 'completed'
+// "종결여부" — status 하나만 기준으로 판정하는 단일 소스. 운영현황/대시보드/보고서가 전부
+// 이 함수 하나만 써야 "조치완료인데 조치중으로 표시" 같은 화면별 불일치가 생기지 않는다.
+export type ClosureStatus = '조치중' | '조치완료' | '재점검' | '종결'
+export const CLOSURE_STATUS_META: Record<ClosureStatus, { label: string; icon: string; color: string; bg: string }> = {
+  조치중: { label: '조치중', icon: '⚠️', color: COLORS.warning, bg: '#FFF7ED' },
+  조치완료: { label: '조치완료', icon: '🔧', color: COLORS.action, bg: '#EFF6FF' },
+  재점검: { label: '재점검', icon: '🔁', color: COLORS.warning, bg: '#FFF7ED' },
+  종결: { label: '종결', icon: '✅', color: COLORS.success, bg: '#F0FDF4' },
+}
+export function getClosureStatus(defect: Defect): ClosureStatus {
+  if (defect.status === 'completed') return '종결'
+  if (defect.status === 'action_done') return '조치완료'
+  if (defect.status === 'recheck_needed') return '재점검'
+  return '조치중' // open · reviewing · assigned · in_progress · hold
 }
 
 // 대시보드 상단 카테고리 탭(전체/누수/전기/배수/기타)을 위한 분야 그룹핑.

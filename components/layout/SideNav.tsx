@@ -8,11 +8,11 @@ import { useCurrentRole, canRegister, canAccessAudit, canAccessAdminSettings } f
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import UserPanel from './UserPanel'
 
-// 운영 — 대시보드/운영현황/하자목록/하자등록
+// 운영 — 대시보드/운영현황/하자등록 (하자 목록은 운영현황의 "목록 보기" 탭으로 통합됨 — 메뉴만 제거,
+// /defects 라우트 자체는 다른 화면의 필터 링크(예: 대시보드 KPI → /defects?filter=…)를 위해 유지한다)
 const operationsItems = [
   { href: '/dashboard',   label: '대시보드', icon: 'fa-solid fa-table-cells-large' },
   { href: '/analytics',   label: '운영현황', icon: 'fa-solid fa-calendar-days' },
-  { href: '/defects',     label: '하자 목록', icon: 'fa-solid fa-list-check' },
   { href: '/defects/new', label: '하자 등록', icon: 'fa-solid fa-circle-plus' },
 ]
 
