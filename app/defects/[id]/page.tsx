@@ -32,6 +32,12 @@ const AI_RISK_COLORS: Record<string, { bg: string; text: string; border: string 
   높음: { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
   긴급: { bg: '#fff1f2', text: '#be123c', border: '#fecdd3' },
 }
+// 하자 구분 배지 색상 — "하자사항"(시공사 귀책 가능성이 확정된 상태)은 한눈에 위험하게 보이도록 빨간색으로 강조한다.
+const DEFECT_TYPE_BADGE: Record<string, { bg: string; text: string }> = {
+  하자사항: { bg: '#FEF2F2', text: '#DC2626' },
+  일반사항: { bg: '#F0FDF4', text: '#16A34A' },
+  '확인 필요': { bg: '#f3f5f7', text: '#425466' },
+}
 const COST_LABELS: Record<string, string> = { gukbo: '국보', our: '자체', claim: '청구' }
 const LOG_LABELS: Record<string, string> = { occurrence: '발생', inspection: '점검', action: '조치', recurrence: '재발' }
 const LOG_COLORS: Record<string, string> = { occurrence: '#be1044', inspection: '#1d6dc2', action: '#0f7850', recurrence: '#b06b1a' }
@@ -526,7 +532,7 @@ export default function DefectDetailPage() {
             <div style={{ ...card, marginTop: 16 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f4f8', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386' }}>하자 구분 및 귀책 판단</span>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#f3f5f7', color: '#425466' }}>{defect.defectType ?? '확인 필요'}</span>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: DEFECT_TYPE_BADGE[defect.defectType ?? '확인 필요'].bg, color: DEFECT_TYPE_BADGE[defect.defectType ?? '확인 필요'].text }}>{defect.defectType ?? '확인 필요'}</span>
               </div>
               <div style={{ padding: 16 }}>
                 <div style={{ marginBottom: 12 }}>
