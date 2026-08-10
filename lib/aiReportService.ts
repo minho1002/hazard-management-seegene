@@ -15,7 +15,7 @@ function fmtManLabeled(d: Defect): string {
   return confirmed ? fmtMan(amount) : `${fmtMan(amount)}(예상)`
 }
 
-export type ReportType = 'field-analysis' | 'budget-settlement' | 'executive-ppt' | 'recurring-defects' | 'cost-bearer' | 'defect-classification'
+export type ReportType = 'field-analysis' | 'budget-settlement' | 'executive-ppt' | 'recurring-defects' | 'cost-bearer' | 'defect-classification' | 'comprehensive-status'
 
 // Dashboard/운영현황/보고서와 동일한 6종 기간 기준(designTokens.ts StandardPeriodType)을 그대로 쓴다.
 export type ReportPeriodType = StandardPeriodType
@@ -119,6 +119,7 @@ const AGG_BASIS_LABEL: Record<ReportType, string> = {
   'recurring-defects':     '하자 발생일',
   'cost-bearer':           '결제 완료일 (없으면 하자 발생일)',
   'defect-classification': '하자 발생일',
+  'comprehensive-status':  '하자 발생일',
 }
 
 // ── Action-Plan 종합의견 (대시보드 / 집계현황 공용) ─────────────────────────
@@ -534,6 +535,9 @@ function mockGenerate(type: ReportType, input: ReportInput): GeneratedReport {
     'recurring-defects':      ['반복 하자 보고서',          '반복 발생 하자 현황 및 근본원인 재점검 권고'],
     'cost-bearer':            ['비용 부담 주체별 보고서',    '시공사·재단·외주업체 부담 예상 금액 및 미정 현황'],
     'defect-classification':  ['하자사항/일반사항 구분 보고서', '귀책 구분 및 관리자 검토 필요 항목'],
+    // '보고서'(/reports) 화면 전용 — mockGenerate()로 생성되지 않고 app/reports/page.tsx가
+    // GeneratedReport를 직접 조립할 때만 쓰인다. Record<ReportType,...> 완전성을 위해 추가.
+    'comprehensive-status':   ['시설 하자관리 종합 현황 보고서', '기간·카테고리·상태별 통합 현황 분석'],
   }
   const [title, subtitle] = TITLES[type]
   const scopedDefects = filterDefectsForReport(type, input)

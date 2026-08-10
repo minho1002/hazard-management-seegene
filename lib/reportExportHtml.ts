@@ -73,6 +73,20 @@ export function buildReportPrintHTML(report: GeneratedReport): string {
     { label: '반복 발생 경고', color: '#635bff', items: report.actionPlan.recurringWarning },
     { label: '관리자 결재 필요', color: '#0F7850', items: report.actionPlan.approvalNeeded },
   ].filter(g => g.items.length > 0)
+  // actionPlan을 통째로 비워서(모든 배열 length:0) "AI Insight/Action Plan" 섹션을 선택적으로 끄는
+  // 화면(app/reports/page.tsx)이 있으므로, 내용이 전혀 없을 때는 빈 제목만 남는 섹션을 아예 생략한다.
+  // headline이 항상 채워지는 기존 6개 리포트 타입(/reports/ai)의 출력은 이 가드로 바뀌지 않는다.
+  const hasActionPlanContent = report.actionPlan.headline.length > 0 || actionGroups.length > 0
+  const actionPlanHtml = hasActionPlanContent ? `
+    <div class="rpt-sec rpt-action">
+      <div class="rpt-sec-h">AI 종합 의견</div>
+      <div>${report.actionPlan.headline.map(line => `<div class="rpt-action-headline">• ${esc(line)}</div>`).join('')}</div>
+      ${actionGroups.map(g => `
+        <div class="rpt-action-group">
+          <div class="rpt-action-group-h" style="color:${g.color}">${g.label}</div>
+          ${g.items.map(t => `<div class="rpt-action-item">· ${esc(t)}</div>`).join('')}
+        </div>`).join('')}
+    </div>` : ''
 
   return `<div class="rpt-a4">
     <div class="rpt-hd">
@@ -88,15 +102,7 @@ export function buildReportPrintHTML(report: GeneratedReport): string {
     </div>
     <hr class="rpt-rule">
     ${sectionsHtml}
-    <div class="rpt-sec rpt-action">
-      <div class="rpt-sec-h">AI 종합 의견</div>
-      <div>${report.actionPlan.headline.map(line => `<div class="rpt-action-headline">• ${esc(line)}</div>`).join('')}</div>
-      ${actionGroups.map(g => `
-        <div class="rpt-action-group">
-          <div class="rpt-action-group-h" style="color:${g.color}">${g.label}</div>
-          ${g.items.map(t => `<div class="rpt-action-item">· ${esc(t)}</div>`).join('')}
-        </div>`).join('')}
-    </div>
+    ${actionPlanHtml}
     <div class="rpt-sec">
       <div class="rpt-hd-meta">분석 대상: <strong>${report.metadata.totalDefects}건</strong> &nbsp;|&nbsp; 처리 완료율: <strong>${report.metadata.completionRate}%</strong> &nbsp;|&nbsp; 총 처리 비용: <strong>${esc(fmtKRW(report.metadata.totalCost))}</strong></div>
     </div>
