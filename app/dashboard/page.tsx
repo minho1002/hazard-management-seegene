@@ -9,7 +9,7 @@ import { Doughnut, Line } from 'react-chartjs-2'
 import { useStore, type Defect } from '@/lib/store'
 import {
   isOverdue, getDisplayCost, SEVERITY_META, type SeverityKey, needsTodayAction, isSlaImminent,
-  isInProgressStatus, isKpiCompleted, filterByOccurredPeriod, sumCostSummary,
+  isInProgressStatus, isActionDoneStatus, filterByOccurredPeriod, sumCostSummary,
   type StandardPeriodType, STANDARD_PERIOD_OPTIONS, computeStandardPeriod, isScheduled, isUnresolved, isRecurring,
   isRiskDefect,
 } from '@/lib/designTokens'
@@ -87,7 +87,9 @@ export default function DashboardPage() {
   const kpiInProgress = periodDefects.filter(isInProgressStatus).length
   const kpiScheduled = periodDefects.filter(isScheduled).length
   const kpiSlaImminent = periodDefects.filter(isSlaImminent).length
-  const kpiCompleted = periodDefects.filter(isKpiCompleted).length
+  // "조치 완료" 라벨은 STATUS_META상 action_done의 라벨과 같다 — 최종완료(completed)를 세면
+  // 라벨과 실제 집계 상태가 어긋나 "조치완료 하자가 있는데 0건으로 보이는" 문제가 생긴다.
+  const kpiCompleted = periodDefects.filter(isActionDoneStatus).length
   const kpiUnresolved = periodDefects.filter(isUnresolved).length
   const { confirmed: kpiConfirmedCost, pending: kpiEstimatedCost } = sumCostSummary(periodDefects)
 
@@ -105,7 +107,7 @@ export default function DashboardPage() {
   const lastMonthInProgress = lastMonthDefects.filter(isInProgressStatus).length
   const lastMonthScheduled = lastMonthDefects.filter(isScheduled).length
   const lastMonthSlaImminent = lastMonthDefects.filter(isSlaImminent).length
-  const lastMonthCompleted = lastMonthDefects.filter(isKpiCompleted).length
+  const lastMonthCompleted = lastMonthDefects.filter(isActionDoneStatus).length
   const lastMonthUnresolved = lastMonthDefects.filter(isUnresolved).length
   const { confirmed: lastMonthConfirmedCost, pending: lastMonthEstimatedCost } = sumCostSummary(lastMonthDefects)
 

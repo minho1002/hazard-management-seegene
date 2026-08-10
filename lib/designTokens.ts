@@ -138,6 +138,13 @@ export function isKpiCompleted(defect: Defect): boolean {
   return defect.status === 'completed'
 }
 
+// 조치완료 — action_done 상태만 집계한다. 최종완료(completed, isKpiCompleted)와는 다른 단계
+// (조치는 끝났지만 관리자 최종완료 승인 전)이므로 섞어 쓰면 안 된다. "조치 완료" 라벨이 붙는
+// KPI/카드는 반드시 이 함수를 써야 실제 조치완료 건수와 라벨이 일치한다.
+export function isActionDoneStatus(defect: Defect): boolean {
+  return defect.status === 'action_done'
+}
+
 // 발생일(firstOccurredAt) 기준 기간 필터 — Dashboard/운영현황 공용. 발생일이 없는 하자는 어느
 // 기간에도(전체 기간 포함) 속할 수 없으므로 항상 제외한다. 두 화면이 이 함수 하나만 써야
 // 같은 기간을 선택했을 때 진행중/완료/지연/재점검/반복/비용 숫자가 화면마다 달라지지 않는다.

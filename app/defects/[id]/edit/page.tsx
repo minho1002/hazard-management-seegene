@@ -47,6 +47,7 @@ export default function EditDefectPage() {
     firstOccurredAt: defectRaw?.firstOccurredAt ?? new Date().toISOString().slice(0, 10),
     expectedCompletionDate: defectRaw?.expectedCompletionDate ?? '',
     actionCompletedAt: defectRaw?.actionCompletedAt ?? '',
+    recurrenceCount: defectRaw?.recurrenceCount != null ? String(defectRaw.recurrenceCount) : '0',
   }))
 
   if (!defectRaw) {
@@ -113,6 +114,10 @@ export default function EditDefectPage() {
       alert('조치완료일은 발생일보다 이후여야 합니다.')
       return
     }
+    if (form.recurrenceCount !== '' && (!/^\d+$/.test(form.recurrenceCount) || Number(form.recurrenceCount) < 0)) {
+      alert('재발횟수는 0 이상의 정수여야 합니다.')
+      return
+    }
     const categoryId = form.categoryId === '__custom__'
       ? addCategory(customCategoryName)
       : (form.categoryId ? Number(form.categoryId) : null)
@@ -143,6 +148,7 @@ export default function EditDefectPage() {
       firstOccurredAt: form.firstOccurredAt || null,
       expectedCompletionDate: form.expectedCompletionDate || null,
       actionCompletedAt: form.actionCompletedAt || null,
+      recurrenceCount: form.recurrenceCount === '' ? 0 : Number(form.recurrenceCount),
     })
     router.push(`/defects/${defect.id}`)
   }
@@ -257,6 +263,11 @@ export default function EditDefectPage() {
                     <label style={labelCls}>조치완료일</label>
                     <input type="date" style={inputCls} value={form.actionCompletedAt ?? ''} onChange={e => setField('actionCompletedAt', e.target.value)} />
                     <div style={{ fontSize: '0.66rem', color: '#aab', marginTop: 4 }}>과거에 조치완료일 없이 조치완료 처리된 건을 바로잡을 때만 사용하세요. 새로 조치완료 처리할 때는 상세 화면의 "조치완료로 전환" 버튼을 사용합니다.</div>
+                  </div>
+                  <div>
+                    <label style={labelCls}>재발횟수</label>
+                    <input type="number" min={0} step={1} style={inputCls} value={form.recurrenceCount} onChange={e => setField('recurrenceCount', e.target.value)} />
+                    <div style={{ fontSize: '0.66rem', color: '#aab', marginTop: 4 }}>평소엔 상세 화면 "처리 이력"에 재발 이력을 추가하면 자동으로 올라갑니다. 등록 시 놓친 과거 재발 건수를 직접 바로잡을 때만 여기서 수정하세요.</div>
                   </div>
                   <div>
                     <label style={labelCls}>신고자</label>
