@@ -9,7 +9,7 @@ import type { SearchCondition } from '@/lib/searchParser'
 import DefectsTable from '@/components/defects/DefectsTable'
 import {
   isOverdue, isRecurring, needsTodayAction, needsAfterPhoto, getCostBearerStatus,
-  isInProgressStatus, isScheduled, isUnresolved, isKpiCompleted,
+  isInProgressStatus, isScheduled, isUnresolved, isKpiCompleted, isRiskDefect,
   COLORS, STATUS_FLOW, STATUS_META, COST_BEARER_CATEGORIES,
 } from '@/lib/designTokens'
 import { canDelete, canRegister, useCurrentRole } from '@/lib/permissions'
@@ -31,6 +31,7 @@ const PRIMARY_QUICK_FILTERS = [
   { key: 'recheck', label: '재점검 필요', color: COLORS.warning },
 ] as const
 const MORE_QUICK_FILTERS = [
+  { key: 'risk', label: '위험', color: COLORS.critical },
   { key: 'nophoto', label: '조치후 사진 미첨부', color: COLORS.warning },
   { key: 'unclassified', label: '확인 필요', color: COLORS.textMuted },
   { key: 'costunresolved', label: '비용부담 미정', color: COLORS.danger },
@@ -128,6 +129,7 @@ function DefectsPageInner() {
       if (quickFilter === 'today' && !needsTodayAction(d, state.defects)) return false
       if (quickFilter === 'critical' && !(d.severity === 'critical' && d.status !== 'completed')) return false
       if (quickFilter === 'overdue' && !isOverdue(d)) return false
+      if (quickFilter === 'risk' && !isRiskDefect(d)) return false
       if (quickFilter === 'recurring' && !(isRecurring(d, state.defects) && d.status !== 'completed')) return false
       if (quickFilter === 'recheck' && d.status !== 'recheck_needed') return false
       if (quickFilter === 'inprogress' && !isInProgressStatus(d)) return false

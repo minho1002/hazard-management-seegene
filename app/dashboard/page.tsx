@@ -11,6 +11,7 @@ import {
   isOverdue, getDisplayCost, SEVERITY_META, type SeverityKey, needsTodayAction, isSlaImminent,
   isInProgressStatus, isKpiCompleted, filterByOccurredPeriod, sumCostSummary,
   type StandardPeriodType, STANDARD_PERIOD_OPTIONS, computeStandardPeriod, isScheduled, isUnresolved, isRecurring,
+  isRiskDefect,
 } from '@/lib/designTokens'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { generateActionPlanOpinion } from '@/lib/aiReportService'
@@ -122,7 +123,7 @@ export default function DashboardPage() {
   // ── 2행 ────────────────────────────────────────────────────────────────
   const sevRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
   const riskTop5 = [...periodDefects]
-    .filter(d => d.status !== 'completed')
+    .filter(isRiskDefect)
     .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9) || overdueDaysOf(b) - overdueDaysOf(a))
     .slice(0, 5)
   const top3 = [...periodDefects]
@@ -265,7 +266,7 @@ export default function DashboardPage() {
           <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
             <div style={{ ...cardPad, paddingBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={sectionTitle}><i className="fa-solid fa-triangle-exclamation" style={{ color: RED }} /> 위험 하자 TOP 5</span>
-              <Link href="/defects?filter=overdue" style={{ fontSize: '0.76rem', color: BLUE, textDecoration: 'none', fontWeight: 600 }}>더보기 <i className="fa-solid fa-chevron-right" style={{ fontSize: '0.62rem' }} /></Link>
+              <Link href="/defects?filter=risk" style={{ fontSize: '0.76rem', color: BLUE, textDecoration: 'none', fontWeight: 600 }}>더보기 <i className="fa-solid fa-chevron-right" style={{ fontSize: '0.62rem' }} /></Link>
             </div>
             {riskTop5.length === 0 ? (
               <div style={{ padding: '20px 24px 26px', fontSize: '0.8rem', color: '#aab' }}>위험 하자가 없습니다.</div>

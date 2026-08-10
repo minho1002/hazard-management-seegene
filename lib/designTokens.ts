@@ -125,6 +125,13 @@ export function isUnresolved(defect: Defect): boolean {
   return isInProgressStatus(defect) || isScheduled(defect) || isOverdue(defect) || needsRecheck(defect)
 }
 
+// 위험 하자 — Dashboard "위험 하자 TOP5" 카드와 하자목록 "위험" 퀵필터가 공유하는 기준. 최종완료만
+// 아니면 심각도/지연 여부와 무관하게 위험 순위 산정 대상이 된다(조치완료 상태도 포함). TOP5 화면은
+// 여기에 심각도→지연일 정렬을 추가로 적용해 상위 5건만 보여준다.
+export function isRiskDefect(defect: Defect): boolean {
+  return defect.status !== 'completed'
+}
+
 // 완료 — 최종완료(completed) 상태만 완료로 집계한다. Dashboard/운영현황이 이 함수 하나만 써야
 // 진행중·지연·재점검·반복과 마찬가지로 같은 데이터에서 항상 같은 완료 건수가 나온다.
 export function isKpiCompleted(defect: Defect): boolean {
