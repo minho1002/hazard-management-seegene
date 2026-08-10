@@ -131,9 +131,11 @@ export default function DashboardPage() {
     .slice(0, 3)
   // 반복 하자 TOP5 — isRecurring(designTokens.ts)으로 판단 기준을 상세화면/운영현황과 통일.
   // allDefects(전체 이력, !deletedAt)를 넘겨 "동일 위치+카테고리 2건 이상" 조건까지 전체 기간 기준으로 판정하고,
-  // 그중 조회기간(periodDefects)에 해당하는 건만 목록에 표시한다.
+  // 그중 조회기간(periodDefects)에 해당하는 건만 목록에 표시한다. status !== 'completed' 조건은 하자목록의
+  // "반복만" 퀵필터와 동일한 기준(완료된 반복 하자는 더 이상 조치 대상이 아님)으로, TOP5 → 더보기 이동 시
+  // 목록에서 사라지는 항목이 없도록 두 화면이 같은 조건을 쓴다.
   const recurringTop5 = [...periodDefects]
-    .filter(d => isRecurring(d, allDefects))
+    .filter(d => isRecurring(d, allDefects) && d.status !== 'completed')
     .sort((a, b) => b.recurrenceCount - a.recurrenceCount)
     .slice(0, 5)
 
