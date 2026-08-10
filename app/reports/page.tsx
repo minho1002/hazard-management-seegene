@@ -10,7 +10,10 @@ import {
 import { Doughnut, Bar, Line } from 'react-chartjs-2'
 import * as XLSX from 'xlsx'
 import { useStore } from '@/lib/store'
-import { toLegacyBucket, STATUS_META, getDisplayCost } from '@/lib/designTokens'
+import {
+  toLegacyBucket, STATUS_META, getDisplayCost, COST_ESTIMATED_COLOR, COST_CONFIRMED_COLOR,
+  type StandardPeriodType, STANDARD_PERIOD_OPTIONS, computeStandardPeriod, filterByOccurredPeriod,
+} from '@/lib/designTokens'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Tooltip, Legend, Filler)
 
@@ -67,14 +70,6 @@ const STAT_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(STATUS_META).map(([key, meta]) => [key, meta.label])
 )
 
-const PERIODS = [
-  { key: 'this_month', label: '이번 달' },
-  { key: 'last_month', label: '지난 달' },
-  { key: '3months',    label: '최근 3개월' },
-  { key: '6months',    label: '최근 6개월' },
-  { key: 'custom',     label: '사용자 지정' },
-]
-
 // ── A4 CSS for standalone export ───────────────────────────────────────────
 const RPT_CSS = `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{background:#fff}
 .rpt-a4{font-family:'Malgun Gothic','맑은 고딕','Inter',sans-serif;font-size:10.5pt;line-height:1.7;color:#0a2540;background:#fff;padding:20mm;width:210mm;min-height:297mm;box-sizing:border-box}
@@ -130,23 +125,17 @@ function fmtCostCell(d: DefectRow): string {
   return d.costConfirmed ? fmtKRW(d.totalCost) : `${fmtKRW(d.totalCost)}(예상)`
 }
 
-function getPeriodDates(p: string): { from: string; to: string } {
-  const now = new Date()
-  const today = now.toISOString().slice(0, 10)
-  if (p === 'this_month') {
-    return { from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10), to: today }
-  }
-  if (p === 'last_month') {
-    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const last  = new Date(now.getFullYear(), now.getMonth(), 0)
-    return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) }
-  }
-  if (p === '6months') {
-    const d = new Date(now); d.setMonth(d.getMonth() - 6)
-    return { from: d.toISOString().slice(0, 10), to: today }
-  }
-  const d = new Date(now); d.setMonth(d.getMonth() - 3)
-  return { from: d.toISOString().slice(0, 10), to: today }
+// '전체 기간'(from/to 둘 다 null)은 월별 추이 차트·보고 기간 표시를 위해 실제 데이터의
+// 최초~최근 발생일로 구간을 확정한다.
+function resolveEffectiveRange(
+  state: ReturnType<typeof useStore>['state'],
+  std: { from: string | null; to: string | null }
+): { from: string; to: string } {
+  if (std.from && std.to) return { from: std.from, to: std.to }
+  const dates = state.defects.filter(d => !d.deletedAt && d.firstOccurredAt).map(d => d.firstOccurredAt!.slice(0, 10)).sort()
+  const today = new Date().toISOString().slice(0, 10)
+  if (dates.length === 0) return { from: today, to: today }
+  return { from: dates[0], to: dates[dates.length - 1] }
 }
 
 function buildMonthsInRange(from: string, to: string, monthly: ApiData['monthly']): MonthEntry[] {
@@ -218,7 +207,7 @@ function buildA4HTML(p: ReportParams): string {
       <td><span class="rpt-cdot" style="background:${c.color}"></span>${c.name}</td>
       <td style="text-align:center;font-weight:700">${c.count}</td>
       <td><div class="rpt-bar-wrap"><div class="rpt-bar" style="width:${total ? Math.round(c.count / total * 100) : 0}%;background:${c.color}"></div></div><span class="rpt-pct">${total ? Math.round(c.count / total * 100) : 0}%</span></td>
-      <td style="text-align:right;font-size:7.5pt">확정 ${fmtKRW(c.confirmedCost)}${c.pendingCost > 0 ? ` · 예상 ${fmtKRW(c.pendingCost)}` : ''}</td>
+      <td style="text-align:right;font-size:7.5pt"><span style="color:${COST_CONFIRMED_COLOR.text}">확정 ${fmtKRW(c.confirmedCost)}</span>${c.pendingCost > 0 ? ` · <span style="color:${COST_ESTIMATED_COLOR.text}">예상 ${fmtKRW(c.pendingCost)}</span>` : ''}</td>
     </tr>`).join('')
 
   const sevRows = p.sevData.map(s => `
@@ -288,7 +277,7 @@ function buildA4HTML(p: ReportParams): string {
       <div class="rpt-kpi kc"><div class="rpt-kpi-lbl">처리중</div><div class="rpt-kpi-v" style="color:#b06b1a">${p.summary.inProgress}</div><div class="rpt-kpi-u">건</div></div>
       <div class="rpt-kpi kf"><div class="rpt-kpi-lbl">보류</div><div class="rpt-kpi-v" style="color:#a16207">${p.summary.hold}</div><div class="rpt-kpi-u">건</div></div>
       <div class="rpt-kpi kd"><div class="rpt-kpi-lbl">완료</div><div class="rpt-kpi-v" style="color:#0f7850">${p.summary.completed}</div><div class="rpt-kpi-u">건</div></div>
-      <div class="rpt-kpi ke"><div class="rpt-kpi-lbl">총 비용</div><div class="rpt-kpi-v" style="font-size:13pt;color:#be1044">${fmtKRW(p.summary.totalCost)}</div><div class="rpt-kpi-u" style="font-size:6.5pt">확정 ${fmtKRW(p.summary.confirmedCost)}${p.summary.pendingEstimatedCost > 0 ? ` · 예상 ${fmtKRW(p.summary.pendingEstimatedCost)}` : ''}</div></div>
+      <div class="rpt-kpi ke"><div class="rpt-kpi-lbl">총 비용</div><div class="rpt-kpi-v" style="font-size:13pt;color:#be1044">${fmtKRW(p.summary.totalCost)}</div><div class="rpt-kpi-u" style="font-size:6.5pt"><span style="color:${COST_CONFIRMED_COLOR.text}">확정 ${fmtKRW(p.summary.confirmedCost)}</span>${p.summary.pendingEstimatedCost > 0 ? ` · <span style="color:${COST_ESTIMATED_COLOR.text}">예상 ${fmtKRW(p.summary.pendingEstimatedCost)}</span>` : ''}</div></div>
     </div>
   </div>
   <hr class="rpt-rule-thin">
@@ -336,7 +325,7 @@ function buildStandaloneHTML(p: ReportParams): string {
 
 // ── Build ApiData from localStorage ────────────────────────────────────────
 function buildApiData(state: ReturnType<typeof useStore>['state'], from: string, to: string): ApiData {
-  const filtered = state.defects.filter(d => !d.deletedAt && d.firstOccurredAt && d.firstOccurredAt >= from && d.firstOccurredAt <= to)
+  const filtered = filterByOccurredPeriod(state.defects.filter(d => !d.deletedAt), from, to)
   const total = filtered.length
   const open = filtered.filter(d => toLegacyBucket(d.status) === 'open').length
   const inProgress = filtered.filter(d => toLegacyBucket(d.status) === 'in_progress').length
@@ -403,9 +392,10 @@ function buildApiData(state: ReturnType<typeof useStore>['state'], from: string,
 // ── Component ──────────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const { state } = useStore()
-  const [period, setPeriod] = useState('3months')
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
+  // Dashboard/운영현황/AI보고서와 동일한 6종(오늘/이번주/이번달/올해/사용자지정/전체기간) + 공용 계산 함수.
+  const [periodType, setPeriodType] = useState<StandardPeriodType>('month')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   const [showPreview, setShowPreview] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
 
@@ -416,23 +406,13 @@ export default function ReportsPage() {
     return () => { try { document.head.removeChild(script) } catch (_) {} }
   }, [])
 
-  useEffect(() => {
-    const dates = getPeriodDates('3months')
-    setFromDate(dates.from)
-    setToDate(dates.to)
-  }, [])
+  const standardPeriod = computeStandardPeriod(periodType, customFrom || null, customTo || null)
+  const periodInputIncomplete = periodType === 'custom' && (!customFrom || !customTo)
+  const { from: fromDate, to: toDate } = periodInputIncomplete ? { from: '', to: '' } : resolveEffectiveRange(state, standardPeriod)
 
   // Derive apiData from store directly (no async fetch needed)
   const apiData: ApiData | null = (fromDate && toDate) ? buildApiData(state, fromDate, toDate) : null
   const loading = false
-
-  function selectPeriod(p: string) {
-    setPeriod(p)
-    if (p === 'custom') return
-    const dates = getPeriodDates(p)
-    setFromDate(dates.from)
-    setToDate(dates.to)
-  }
 
   const rp = apiData ? computeReportParams(apiData, fromDate, toDate) : null
 
@@ -520,13 +500,13 @@ export default function ReportsPage() {
   <div class="kbox"><div class="klbl">보류</div><div class="kv" style="color:#a16207">${rp.summary.hold}</div></div>
   <div class="kbox"><div class="klbl">완료</div><div class="kv" style="color:#0f7850">${rp.summary.completed}</div></div>
   <div class="kbox"><div class="klbl">총 비용</div><div class="kv" style="font-size:11pt;color:#be1044">${fmtKRW(rp.summary.totalCost)}</div></div>
-  <div class="kbox"><div class="klbl">확정비용</div><div class="kv" style="font-size:11pt;color:#0f7850">${fmtKRW(rp.summary.confirmedCost)}</div></div>
-  <div class="kbox"><div class="klbl">예상비용(미확정)</div><div class="kv" style="font-size:11pt;color:#b06b1a">${fmtKRW(rp.summary.pendingEstimatedCost)}</div></div>
+  <div class="kbox"><div class="klbl">확정비용</div><div class="kv" style="font-size:11pt;color:${COST_CONFIRMED_COLOR.text}">${fmtKRW(rp.summary.confirmedCost)}</div></div>
+  <div class="kbox"><div class="klbl">예상비용(미확정)</div><div class="kv" style="font-size:11pt;color:${COST_ESTIMATED_COLOR.text}">${fmtKRW(rp.summary.pendingEstimatedCost)}</div></div>
 </div>
 <hr class="thin">
 <h2>카테고리별 현황</h2>
 <table><thead><tr><th>카테고리</th><th style="text-align:center">건수</th><th style="text-align:center">비율(%)</th><th style="text-align:right">확정비용</th><th style="text-align:right">예상비용(미확정)</th></tr></thead>
-<tbody>${rp.byCategory.map(c => `<tr><td>${c.name}</td><td style="text-align:center;font-weight:700">${c.count}</td><td style="text-align:center">${rp.summary.total ? Math.round(c.count / rp.summary.total * 100) : 0}%</td><td style="text-align:right">${fmtKRW(c.confirmedCost)}</td><td style="text-align:right">${fmtKRW(c.pendingCost)}</td></tr>`).join('')}</tbody></table>
+<tbody>${rp.byCategory.map(c => `<tr><td>${c.name}</td><td style="text-align:center;font-weight:700">${c.count}</td><td style="text-align:center">${rp.summary.total ? Math.round(c.count / rp.summary.total * 100) : 0}%</td><td style="text-align:right;color:${COST_CONFIRMED_COLOR.text}">${fmtKRW(c.confirmedCost)}</td><td style="text-align:right;color:${COST_ESTIMATED_COLOR.text}">${fmtKRW(c.pendingCost)}</td></tr>`).join('')}</tbody></table>
 <h2>심각도별 분포</h2>
 <table><thead><tr><th>심각도</th><th style="text-align:center">건수</th><th style="text-align:center">비율(%)</th></tr></thead>
 <tbody>${rp.sevData.map(s => `<tr><td>${s.label}</td><td style="text-align:center;font-weight:700">${s.count}</td><td style="text-align:center">${rp.summary.total ? Math.round(s.count / rp.summary.total * 100) : 0}%</td></tr>`).join('')}</tbody></table>
@@ -626,27 +606,27 @@ ${rp.actionItems.length > 0 ? `<h2>조치 필요 사항</h2><table><thead><tr><t
             <i className="fa-regular fa-calendar" />&nbsp; 보고 기간
           </p>
           <div className="flex flex-wrap gap-2">
-            {PERIODS.map(p => (
-              <button key={p.key} onClick={() => selectPeriod(p.key)}
+            {STANDARD_PERIOD_OPTIONS.map(opt => (
+              <button key={opt.key} onClick={() => setPeriodType(opt.key)}
                 style={{
                   padding: '5px 13px', fontSize: '0.73rem', fontWeight: 600, cursor: 'pointer',
                   borderRadius: 999,
-                  border: period === p.key ? '1.5px solid #635bff' : '1.5px solid #e3e8ef',
-                  background: period === p.key ? '#635bff' : '#fff',
-                  color: period === p.key ? '#fff' : '#425466',
+                  border: periodType === opt.key ? '1.5px solid #635bff' : '1.5px solid #e3e8ef',
+                  background: periodType === opt.key ? '#635bff' : '#fff',
+                  color: periodType === opt.key ? '#fff' : '#425466',
                   transition: 'all 0.12s',
                   fontFamily: 'inherit',
                 }}>
-                {p.label}
+                {opt.label}
               </button>
             ))}
           </div>
-          {period === 'custom' && (
+          {periodType === 'custom' && (
             <div className="flex items-center gap-2 mt-3">
-              <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
                 style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #e3e8ef', outline: 'none', width: 145, fontSize: '0.8rem', fontFamily: 'inherit' }} />
               <span style={{ color: '#b0bac6' }}>—</span>
-              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
                 style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid #e3e8ef', outline: 'none', width: 145, fontSize: '0.8rem', fontFamily: 'inherit' }} />
             </div>
           )}
@@ -669,8 +649,8 @@ ${rp.actionItems.length > 0 ? `<h2>조치 필요 사항</h2><table><thead><tr><t
                 { label: '보류',   value: String(rp.summary.hold),          color: '#a16207' },
                 { label: '완료',   value: String(rp.summary.completed),     color: '#0f7850' },
                 { label: '총 비용', value: fmtKRW(rp.summary.totalCost),   color: '#be1044', small: true },
-                { label: '확정비용', value: fmtKRW(rp.summary.confirmedCost), color: '#0f7850', small: true },
-                { label: '예상(미확정)', value: fmtKRW(rp.summary.pendingEstimatedCost), color: '#b06b1a', small: true },
+                { label: '확정비용', value: fmtKRW(rp.summary.confirmedCost), color: COST_CONFIRMED_COLOR.text, small: true },
+                { label: '예상(미확정)', value: fmtKRW(rp.summary.pendingEstimatedCost), color: COST_ESTIMATED_COLOR.text, small: true },
               ].map(k => (
                 <div key={k.label} className="rounded-xl text-center" style={{ background: '#fff', border: '1px solid #e3e8ef', padding: '15px', boxShadow: '0 1px 3px rgba(10,37,64,0.06)' }}>
                   <p style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386', marginBottom: 7 }}>{k.label}</p>

@@ -1,5 +1,8 @@
 import type { Defect, Category, Vendor, DefectFile, FloorPlan } from '@/lib/store'
-import { isOverdue, isRecurring, needsTodayAction, getPaymentBadge, getDisplayCost } from '@/lib/designTokens'
+import {
+  isOverdue, isRecurring, needsTodayAction, getPaymentBadge, getDisplayCost, getCostBearerStatus,
+  COST_ESTIMATED_COLOR, COST_CONFIRMED_COLOR, type StandardPeriodType,
+} from '@/lib/designTokens'
 
 // 보고서 전체가 참조하는 단일 비용 기준 — 확정비용(finalCost/totalCost)을 우선 사용하고,
 // 아직 확정되지 않은 건은 등록 시 입력한 예상비용으로 대체한다(0원과 미입력은 구분).
@@ -14,7 +17,8 @@ function fmtManLabeled(d: Defect): string {
 
 export type ReportType = 'field-analysis' | 'budget-settlement' | 'executive-ppt' | 'recurring-defects' | 'cost-bearer' | 'defect-classification'
 
-export type ReportPeriodType = '전체' | '연도별' | '월별' | '일별' | '사용자 지정'
+// Dashboard/운영현황/보고서와 동일한 6종 기간 기준(designTokens.ts StandardPeriodType)을 그대로 쓴다.
+export type ReportPeriodType = StandardPeriodType
 
 export interface ReportPeriod {
   type: ReportPeriodType
@@ -101,11 +105,11 @@ function filterDefectsForReport(type: ReportType, input: ReportInput): Defect[] 
 }
 
 function periodFilenameSuffix(period: ReportPeriod): string {
-  if (period.type === '전체') return '전체기간'
-  if (period.type === '연도별') return `${(period.from ?? '').slice(0, 4)}년`
-  if (period.type === '월별') return `${(period.from ?? '').slice(0, 4)}-${(period.from ?? '').slice(5, 7)}`
-  if (period.type === '일별') return period.from ?? '전체기간'
-  return `${period.from ?? ''}_${period.to ?? ''}`
+  if (period.type === 'all') return '전체기간'
+  if (period.type === 'today') return period.from ?? '전체기간'
+  if (period.type === 'year') return `${(period.from ?? '').slice(0, 4)}년`
+  if (period.type === 'month') return `${(period.from ?? '').slice(0, 4)}-${(period.from ?? '').slice(5, 7)}`
+  return `${period.from ?? ''}_${period.to ?? ''}` // week/custom
 }
 
 const AGG_BASIS_LABEL: Record<ReportType, string> = {
@@ -137,7 +141,7 @@ export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[]
   const todayItems = open.filter(needsTodayAction)
   const recurring = open.filter(isRecurring)
   const actionDoneAwaiting = defects.filter(d => d.status === 'action_done')
-  const unresolvedCost = open.filter(d => !d.costBearer || d.costBearer === '미정')
+  const unresolvedCost = open.filter(d => getCostBearerStatus(d) === '미정')
   const unpaid = defects.filter(d => effCost(d) > 0 && getPaymentBadge(d, files)?.tone !== 'success')
 
   // 구역(층)별 반복 집계 — 3회 이상 발생한 구역을 "반복 위험 구역"으로 판단
@@ -153,7 +157,7 @@ export function generateActionPlanOpinion(defects: Defect[], files: DefectFile[]
   const riskZones = Object.entries(zoneCounts).filter(([, v]) => v.count >= 3).sort((a, b) => b[1].count - a[1].count)
 
   const ownCostTotal = defects
-    .filter(d => (d.costHandlingType ?? (d.costType === 'our' ? '우리측 부담' : null)) === '우리측 부담')
+    .filter(d => getCostBearerStatus(d) === '재단')
     .reduce((s, d) => s + effCost(d), 0)
 
   const headline: string[] = []
@@ -294,8 +298,8 @@ function buildBudgetSections(input: ReportInput): ReportSection[] {
       id: 'budget-kpi', title: '예산 집행 요약', type: 'kpi-grid',
       kpiItems: [
         { label: '총 누적 처리 비용', value: fmtMan(totalCost), color: '#635bff' },
-        { label: '· 확정', value: fmtMan(confirmedCost), color: '#0F7850' },
-        { label: '· 예상(미확정)', value: fmtMan(pendingEstimatedCost), color: '#d97706' },
+        { label: '· 확정', value: fmtMan(confirmedCost), color: COST_CONFIRMED_COLOR.text },
+        { label: '· 예상(미확정)', value: fmtMan(pendingEstimatedCost), color: COST_ESTIMATED_COLOR.text },
         { label: '건당 평균 처리 비용', value: total > 0 && totalCost > 0 ? fmtMan(Math.round(totalCost / total)) : '-', color: '#059669' },
         { label: '비용 정보 미입력 건수', value: `${defects.filter(hasNoCostInfo).length}건`, color: '#d97706' },
         { label: 'AI 예측 적용 건수', value: `${predDefs.length}건`, color: '#635bff' },
@@ -446,8 +450,8 @@ function buildCostBearerSections(input: ReportInput): ReportSection[] {
   const bearers = ['시공사', '재단', '외주업체', '사용자', '보험/기타', '미정']
   const data = bearers.map(b => ({
     name: b,
-    count: defects.filter(d => (d.costBearer || '미정') === b).length,
-    cost: defects.filter(d => (d.costBearer || '미정') === b).reduce((s, d) => s + effCost(d), 0),
+    count: defects.filter(d => getCostBearerStatus(d) === b).length,
+    cost: defects.filter(d => getCostBearerStatus(d) === b).reduce((s, d) => s + effCost(d), 0),
   }))
   const maxCount = Math.max(1, ...data.map(b => b.count))
   const totalCost = defects.reduce((s, d) => s + effCost(d), 0)
@@ -458,7 +462,7 @@ function buildCostBearerSections(input: ReportInput): ReportSection[] {
       id: 'bearer-kpi', title: '비용 부담 주체 요약', type: 'kpi-grid',
       kpiItems: [
         { label: '총 누적 처리 비용', value: fmtMan(totalCost), color: '#635bff' },
-        { label: '· 예상(미확정)', value: fmtMan(pendingEstimatedCost), color: '#d97706' },
+        { label: '· 예상(미확정)', value: fmtMan(pendingEstimatedCost), color: COST_ESTIMATED_COLOR.text },
         ...data.filter(b => b.name !== '미정').slice(0, 3).map(b => ({ label: `${b.name} 부담`, value: fmtMan(b.cost) })),
       ],
     },
@@ -484,8 +488,8 @@ function buildClassificationSections(input: ReportInput): ReportSection[] {
   const maxTypeCount = Math.max(1, ...typeData.map(t => t.count))
 
   const contractorList = defects.filter(d => d.responsibilityType === '시공사 귀책')
-  const foundationList = defects.filter(d => d.costBearer === '재단')
-  const vendorList = defects.filter(d => d.costBearer === '외주업체')
+  const foundationList = defects.filter(d => getCostBearerStatus(d) === '재단')
+  const vendorList = defects.filter(d => getCostBearerStatus(d) === '외주업체')
 
   return [
     {

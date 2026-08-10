@@ -13,14 +13,15 @@ import PhotoCompareCell from '@/components/defects/PhotoCompareCell'
 import {
   isOverdue, isRecurring, needsTodayAction, needsAfterPhoto, isFullyClosed, getPaymentBadge, getCostBearerStatus,
   isInProgressStatus, isScheduled, isUnresolved, getDisplayCost, getCostStatus, COST_STATUS_META,
-  COLORS, STATUS_FLOW, STATUS_META,
+  COLORS, STATUS_FLOW, STATUS_META, COST_BEARER_CATEGORIES, isKpiCompleted,
 } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canDelete, canRegister, useCurrentRole } from '@/lib/permissions'
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 
 const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
-const COST_BEARER_OPTIONS = ['우리측 부담', '타업체 청구', '시공사 부담', '미정'] as const
+// Dashboard/운영현황/AI보고서와 동일한 비용부담주체 기준(getCostBearerStatus) — 옵션 목록도 맞춰야 필터가 정상 동작한다.
+const COST_BEARER_OPTIONS = COST_BEARER_CATEGORIES
 
 function fmtDate(s: string | null): string {
   if (!s) return '-'
@@ -113,6 +114,7 @@ function DefectsPageInner() {
       if (quickFilter === 'scheduled' && !isScheduled(d)) return false
       if (quickFilter === 'unresolved' && !isUnresolved(d)) return false
       if (quickFilter === 'action_done' && d.status !== 'action_done') return false
+      if (quickFilter === 'completed' && !isKpiCompleted(d)) return false
       if (quickFilter === 'nophoto' && !needsAfterPhoto(d, state.files)) return false
       if (quickFilter === 'unclassified' && (d.defectType ?? '확인 필요') !== '확인 필요') return false
       if (quickFilter === 'costunresolved' && getCostBearerStatus(d) !== '미정') return false

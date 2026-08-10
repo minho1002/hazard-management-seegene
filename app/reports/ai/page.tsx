@@ -11,7 +11,7 @@ import {
   type ReportPeriod,
   type ReportPeriodType,
 } from '@/lib/aiReportService'
-import { COLORS } from '@/lib/designTokens'
+import { COLORS, STANDARD_PERIOD_OPTIONS, computeStandardPeriod } from '@/lib/designTokens'
 import { downloadReportPDF } from '@/lib/reportExportPdf'
 import { downloadReportExcel } from '@/lib/reportExportExcel'
 import { downloadReportWord } from '@/lib/reportExportWord'
@@ -194,57 +194,17 @@ export default function AiReportPage() {
   const [excelLoading, setExcelLoading] = useState(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
 
-  const now = new Date()
-  const [periodType, setPeriodType] = useState<ReportPeriodType>('월별')
-  const [periodYear, setPeriodYear] = useState(now.getFullYear())
-  const [periodMonth, setPeriodMonth] = useState(now.getMonth() + 1)
-  const [periodDate, setPeriodDate] = useState(now.toISOString().slice(0, 10))
+  // Dashboard/운영현황/보고서와 동일한 6종(오늘/이번주/이번달/올해/사용자지정/전체기간) + 공용 계산 함수.
+  const [periodType, setPeriodType] = useState<ReportPeriodType>('month')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [reportPeriodKey, setReportPeriodKey] = useState<string | null>(null)
 
-  function pad2(n: number) { return String(n).padStart(2, '0') }
-  function daysInMonth(y: number, m: number) { return new Date(y, m, 0).getDate() }
-
-  function computePeriod(): ReportPeriod {
-    if (periodType === '전체') return { type: '전체', from: null, to: null, label: '전체 기간' }
-    if (periodType === '연도별') return { type: '연도별', from: `${periodYear}-01-01`, to: `${periodYear}-12-31`, label: `${periodYear}년` }
-    if (periodType === '월별') {
-      const from = `${periodYear}-${pad2(periodMonth)}-01`
-      const to = `${periodYear}-${pad2(periodMonth)}-${pad2(daysInMonth(periodYear, periodMonth))}`
-      return { type: '월별', from, to, label: `${periodYear}년 ${periodMonth}월` }
-    }
-    if (periodType === '일별') return { type: '일별', from: periodDate, to: periodDate, label: periodDate }
-    return {
-      type: '사용자 지정',
-      from: customFrom || null,
-      to: customTo || null,
-      label: customFrom && customTo ? `${customFrom} ~ ${customTo}` : '',
-    }
-  }
-
-  const period = computePeriod()
+  const period: ReportPeriod = { type: periodType, ...computeStandardPeriod(periodType, customFrom || null, customTo || null) }
   const periodKeyNow = JSON.stringify({ type: period.type, from: period.from, to: period.to })
-  const isPeriodValid =
-    periodType === '전체' ? true :
-    periodType === '연도별' ? !!periodYear :
-    periodType === '월별' ? !!periodYear && !!periodMonth :
-    periodType === '일별' ? !!periodDate :
-    !!customFrom && !!customTo && customFrom <= customTo
+  const isPeriodValid = periodType === 'custom' ? (!!customFrom && !!customTo && customFrom <= customTo) : true
   const periodStale = report !== null && reportPeriodKey !== null && reportPeriodKey !== periodKeyNow
 
-  function applyThisMonth() { setPeriodType('월별'); setPeriodYear(now.getFullYear()); setPeriodMonth(now.getMonth() + 1) }
-  function applyLastMonth() {
-    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    setPeriodType('월별'); setPeriodYear(d.getFullYear()); setPeriodMonth(d.getMonth() + 1)
-  }
-  function applyThisYear() { setPeriodType('연도별'); setPeriodYear(now.getFullYear()) }
-  function applyLast30Days() {
-    const from = new Date(now); from.setDate(from.getDate() - 30)
-    setPeriodType('사용자 지정'); setCustomFrom(from.toISOString().slice(0, 10)); setCustomTo(now.toISOString().slice(0, 10))
-  }
-
-  const selectStyle: React.CSSProperties = { padding: '7px 10px', borderRadius: 7, border: '1px solid #e3e8ef', outline: 'none', fontSize: '0.8rem', fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }
   const inputStyle: React.CSSProperties = { padding: '7px 10px', borderRadius: 7, border: '1px solid #e3e8ef', outline: 'none', fontSize: '0.8rem', fontFamily: 'inherit' }
 
   const isEmptyReport = report ? report.metadata.totalDefects === 0 : false
@@ -354,74 +314,30 @@ export default function AiReportPage() {
           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#425466', marginBottom: 11 }}>보고기간 설정</div>
           <div style={{ background: '#fff', border: '1px solid #e3e8ef', borderRadius: 14, padding: '16px 20px' }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-              {(['전체', '연도별', '월별', '일별', '사용자 지정'] as ReportPeriodType[]).map(pt => (
+              {STANDARD_PERIOD_OPTIONS.map(opt => (
                 <button
-                  key={pt}
-                  onClick={() => setPeriodType(pt)}
+                  key={opt.key}
+                  onClick={() => setPeriodType(opt.key)}
                   style={{
                     padding: '7px 16px', borderRadius: 999, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
-                    border: periodType === pt ? '1.5px solid #635bff' : '1.5px solid #e3e8ef',
-                    background: periodType === pt ? '#635bff' : '#fff',
-                    color: periodType === pt ? '#fff' : '#425466',
+                    border: periodType === opt.key ? '1.5px solid #635bff' : '1.5px solid #e3e8ef',
+                    background: periodType === opt.key ? '#635bff' : '#fff',
+                    color: periodType === opt.key ? '#fff' : '#425466',
                     fontFamily: 'inherit',
                   }}
                 >
-                  {pt}
+                  {opt.label}
                 </button>
               ))}
             </div>
 
-            {periodType === '연도별' && (
-              <select value={periodYear} onChange={e => setPeriodYear(Number(e.target.value))} style={selectStyle}>
-                {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2, now.getFullYear() - 3].map(y => (
-                  <option key={y} value={y}>{y}년</option>
-                ))}
-              </select>
-            )}
-
-            {periodType === '월별' && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <select value={periodYear} onChange={e => setPeriodYear(Number(e.target.value))} style={selectStyle}>
-                  {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2, now.getFullYear() - 3].map(y => (
-                    <option key={y} value={y}>{y}년</option>
-                  ))}
-                </select>
-                <select value={periodMonth} onChange={e => setPeriodMonth(Number(e.target.value))} style={selectStyle}>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                    <option key={m} value={m}>{m}월</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {periodType === '일별' && (
-              <input type="date" value={periodDate} onChange={e => setPeriodDate(e.target.value)} style={inputStyle} />
-            )}
-
-            {periodType === '사용자 지정' && (
+            {periodType === 'custom' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={inputStyle} />
                 <span style={{ color: '#b0bac6' }}>~</span>
                 <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={inputStyle} />
               </div>
             )}
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              {[
-                { label: '이번 달', fn: applyThisMonth },
-                { label: '지난 달', fn: applyLastMonth },
-                { label: '올해', fn: applyThisYear },
-                { label: '최근 30일', fn: applyLast30Days },
-              ].map(q => (
-                <button
-                  key={q.label}
-                  onClick={q.fn}
-                  style={{ padding: '5px 12px', borderRadius: 8, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', border: '1px solid #e3e8ef', background: '#f8fafc', color: '#697386', fontFamily: 'inherit' }}
-                >
-                  {q.label}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -532,7 +448,7 @@ export default function AiReportPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>
-                    {report.periodType === '일별' ? '기준일' : '기준기간'}: {report.period}
+                    {report.periodType === 'today' ? '기준일' : '기준기간'}: {report.period}
                   </span>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>생성: {report.generatedAt}</span>
                   <span style={{ fontSize: '0.67rem', padding: '2px 8px', background: '#f0f4f8', borderRadius: 99, color: '#425466' }}>작성자: {report.preparedBy}</span>

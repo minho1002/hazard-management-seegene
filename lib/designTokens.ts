@@ -112,12 +112,91 @@ export function isUnresolved(defect: Defect): boolean {
   return isInProgressStatus(defect) || isScheduled(defect) || isOverdue(defect) || needsRecheck(defect)
 }
 
+// 완료 — 최종완료(completed) 상태만 완료로 집계한다. Dashboard/운영현황이 이 함수 하나만 써야
+// 진행중·지연·재점검·반복과 마찬가지로 같은 데이터에서 항상 같은 완료 건수가 나온다.
+export function isKpiCompleted(defect: Defect): boolean {
+  return defect.status === 'completed'
+}
+
+// 발생일(firstOccurredAt) 기준 기간 필터 — Dashboard/운영현황 공용. 발생일이 없는 하자는 어느
+// 기간에도(전체 기간 포함) 속할 수 없으므로 항상 제외한다. 두 화면이 이 함수 하나만 써야
+// 같은 기간을 선택했을 때 진행중/완료/지연/재점검/반복/비용 숫자가 화면마다 달라지지 않는다.
+export function filterByOccurredPeriod<T extends { firstOccurredAt: string | null }>(
+  defects: T[], from: string | null, to: string | null
+): T[] {
+  return defects.filter(d => {
+    if (!d.firstOccurredAt) return false
+    const occ = d.firstOccurredAt.slice(0, 10)
+    if (from && occ < from) return false
+    if (to && occ > to) return false
+    return true
+  })
+}
+
+// ── 기간 필터 공통 기준 ────────────────────────────────────────────────────
+// Dashboard/운영현황/AI보고서/보고서가 전부 이 6종·이 함수 하나만 써야 오늘/이번주/이번달/올해/
+// 사용자지정/전체기간이 어느 화면에서도 같은 날짜 범위로 계산된다.
+export type StandardPeriodType = 'today' | 'week' | 'month' | 'year' | 'custom' | 'all'
+
+export const STANDARD_PERIOD_OPTIONS: { key: StandardPeriodType; label: string }[] = [
+  { key: 'today', label: '오늘' },
+  { key: 'week', label: '이번 주' },
+  { key: 'month', label: '이번 달' },
+  { key: 'year', label: '올해' },
+  { key: 'custom', label: '사용자 지정' },
+  { key: 'all', label: '전체 기간' },
+]
+
+export interface StandardPeriodRange { from: string | null; to: string | null; label: string }
+
+function periodPad2(n: number) { return String(n).padStart(2, '0') }
+function periodDateStr(d: Date) { return `${d.getFullYear()}-${periodPad2(d.getMonth() + 1)}-${periodPad2(d.getDate())}` }
+
+// 주는 월요일~일요일, 월/연은 달력 기준 현재 달/해로 고정한다(과거 임의 연·월 선택은 '사용자 지정'으로 대체).
+export function computeStandardPeriod(
+  periodType: StandardPeriodType,
+  customFrom: string | null,
+  customTo: string | null,
+  now: Date = new Date()
+): StandardPeriodRange {
+  if (periodType === 'today') {
+    const t = periodDateStr(now)
+    return { from: t, to: t, label: '오늘' }
+  }
+  if (periodType === 'week') {
+    const day = now.getDay() // 0=일요일
+    const diffToMonday = day === 0 ? 6 : day - 1
+    const monday = new Date(now); monday.setDate(now.getDate() - diffToMonday)
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+    return { from: periodDateStr(monday), to: periodDateStr(sunday), label: '이번 주' }
+  }
+  if (periodType === 'month') {
+    const from = `${now.getFullYear()}-${periodPad2(now.getMonth() + 1)}-01`
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const to = `${now.getFullYear()}-${periodPad2(now.getMonth() + 1)}-${periodPad2(lastDay)}`
+    return { from, to, label: '이번 달' }
+  }
+  if (periodType === 'year') {
+    return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31`, label: `${now.getFullYear()}년` }
+  }
+  if (periodType === 'custom') {
+    if (!customFrom || !customTo) return { from: null, to: null, label: '사용자 지정 (시작·종료일을 선택하세요)' }
+    return { from: customFrom, to: customTo, label: `${customFrom} ~ ${customTo}` }
+  }
+  return { from: null, to: null, label: '전체 기간' }
+}
+
 export type CostStatus = '예상' | '견적확인' | '확정' | '정산완료'
 
+// 예상/확정 비용 공통 색상 — Dashboard/운영현황/하자목록/AI보고서/보고서 전부 이 두 값만 재사용한다.
+// 예상(미확정)은 회색, 확정은 녹색(COLORS.success)으로 통일한다.
+export const COST_ESTIMATED_COLOR = { text: COLORS.textMuted, bg: '#F3F4F6' }
+export const COST_CONFIRMED_COLOR = { text: COLORS.success, bg: '#F0FDF4' }
+
 export const COST_STATUS_META: Record<CostStatus, { label: string; color: string; bg: string }> = {
-  예상: { label: '예상', color: '#B06B1A', bg: '#FFF7ED' },
+  예상: { label: '예상', color: COST_ESTIMATED_COLOR.text, bg: COST_ESTIMATED_COLOR.bg },
   견적확인: { label: '견적확인', color: '#1D4ED8', bg: '#EFF6FF' },
-  확정: { label: '확정', color: '#0F7850', bg: '#F0FDF4' },
+  확정: { label: '확정', color: COST_CONFIRMED_COLOR.text, bg: COST_CONFIRMED_COLOR.bg },
   정산완료: { label: '정산완료', color: '#15803D', bg: '#DCFCE7' },
 }
 
@@ -131,6 +210,20 @@ export function getDisplayCost(defect: Defect): { amount: number | null; confirm
   if (defect.totalCost > 0) return { amount: defect.totalCost, confirmed: true }
   if (defect.estimatedCost != null) return { amount: defect.estimatedCost, confirmed: false }
   return { amount: null, confirmed: false }
+}
+
+// 비용(확정/예상) 합계 — Dashboard/운영현황이 이 함수 하나만 써야 같은 하자 목록에서 항상
+// 같은 확정·예상 합계가 나온다. getDisplayCost() 기준 그대로 누적한다.
+export function sumCostSummary(defects: Defect[]): { confirmed: number; pending: number } {
+  let confirmed = 0
+  let pending = 0
+  for (const d of defects) {
+    const { amount, confirmed: isConfirmed } = getDisplayCost(d)
+    if (amount == null) continue
+    if (isConfirmed) confirmed += amount
+    else pending += amount
+  }
+  return { confirmed, pending }
 }
 
 // 확정된 하자의 costStatus 배지 — 값이 없으면(예상비용조차 없으면) null.
@@ -189,12 +282,31 @@ const PAYMENT_METHOD_ICON: Record<string, string> = {
   '법인카드': '💳', '계좌이체': '🏦', '세금계산서': '🧾', '미정': '❔',
 }
 // 비용 부담 주체 — 신규 등록(costHandlingType: 우리측 부담/타업체 청구/시공사 부담/미정)과
-// 레거시 귀책판단(costBearer: 시공사/재단/외주업체/...)이 서로 다른 옵션 목록을 갖고 공존한다.
-// 등록 시 한쪽 값을 다른 select에 그대로 넣으면 옵션이 없어 첫 옵션이 잘못 표시되므로
-// (예: '우리측 부담'을 costBearer에 넣으면 select가 임의로 '시공사'를 보여주는 버그),
-// 두 필드를 섞지 않고 "확정 여부" 판정은 이 함수로만 한다 — 신규 필드 우선, 없으면 레거시 폴백.
-export function getCostBearerStatus(defect: Defect): string {
-  return defect.costHandlingType ?? defect.costBearer ?? '미정'
+// 귀책판단(costBearer: 시공사/재단/외주업체/사용자/보험·기타/미정)이 서로 다른 옵션 목록을 갖고
+// 공존한다. Dashboard/운영현황/하자목록/AI보고서/보고서가 전부 이 함수 하나만 기준으로 집계해야
+// 화면마다 다른 숫자가 나오지 않는다.
+// 우선순위: costBearer(관리자 확정·AI 귀책판단, 더 세분화된 값)가 있으면 그것을 최우선 사용하고,
+// 없을 때만 costHandlingType(등록 시 입력한 처리방식)을 costBearer 체계로 환산해서 대신 쓴다.
+export type CostBearerCategory = '시공사' | '재단' | '외주업체' | '사용자' | '보험/기타' | '미정'
+export const COST_BEARER_CATEGORIES: CostBearerCategory[] = ['시공사', '재단', '외주업체', '사용자', '보험/기타', '미정']
+
+const HANDLING_TYPE_TO_BEARER: Record<string, CostBearerCategory> = {
+  '시공사 부담': '시공사',
+  '우리측 부담': '재단',
+  '타업체 청구': '외주업체',
+}
+
+// 등록 화면의 costHandlingType 선택값을 costBearer 체계 값으로 환산한다. 등록 시 두 필드를
+// 함께 기록해두면(costBearer에 임의값을 그대로 넣는 게 아니라 이 함수로 변환한 값을 넣으면)
+// 상세화면의 costBearer select·AI보고서처럼 costBearer를 직접 참조하는 곳도 정상 동작한다.
+export function mapCostHandlingTypeToBearer(handlingType: string | null | undefined): CostBearerCategory | null {
+  if (!handlingType) return null
+  return HANDLING_TYPE_TO_BEARER[handlingType] ?? null
+}
+
+export function getCostBearerStatus(defect: Defect): CostBearerCategory {
+  if (defect.costBearer && defect.costBearer !== '미정') return defect.costBearer as CostBearerCategory
+  return mapCostHandlingTypeToBearer(defect.costHandlingType) ?? '미정'
 }
 
 export function getPaymentBadge(defect: Defect, files: DefectFile[]): PaymentBadge | null {

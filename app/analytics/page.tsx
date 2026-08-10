@@ -8,7 +8,10 @@ import DefectCalendar from '@/components/dashboard/DefectCalendar'
 import CategoryTabBar, { type CategoryTab } from '@/components/dashboard/CategoryTabBar'
 import {
   needsTodayAction, isOverdue, COLORS, getPaymentBadge,
-  isInProgressStatus, isScheduled, needsRecheck, getDisplayCost,
+  isInProgressStatus, isScheduled, needsRecheck, getDisplayCost, getCostBearerStatus,
+  COST_ESTIMATED_COLOR, COST_CONFIRMED_COLOR,
+  isKpiCompleted, isRecurring, filterByOccurredPeriod, sumCostSummary,
+  type StandardPeriodType, STANDARD_PERIOD_OPTIONS, computeStandardPeriod,
 } from '@/lib/designTokens'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canRegister, useCurrentRole } from '@/lib/permissions'
@@ -21,26 +24,12 @@ function fmtKRW(n: number) {
 const ALL_TAB_KEY = '__all__'
 const UNCATEGORIZED_TAB_KEY = '__uncategorized__'
 
-type PeriodType = 'today' | 'week' | 'month' | 'year' | 'custom' | 'all'
-
-const PERIOD_OPTIONS: { key: PeriodType; label: string }[] = [
-  { key: 'today', label: '오늘' },
-  { key: 'week', label: '이번 주' },
-  { key: 'month', label: '이번 달' },
-  { key: 'year', label: '올해' },
-  { key: 'custom', label: '사용자 지정' },
-  { key: 'all', label: '전체 기간' },
-]
-
-function pad2(n: number) { return String(n).padStart(2, '0') }
-function toDateStr(d: Date) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
-
+// Dashboard/하자목록/AI보고서와 동일한 getCostBearerStatus() 기준으로 재단→우리측, 외주업체→타업체로
+// 환산한다 (시공사/사용자/보험·기타/미정은 이전과 동일하게 '기타'로 묶여 별도 표시하지 않는다).
 function costBucket(d: Defect): '우리측' | '타업체' | '기타' {
-  if (d.costHandlingType === '우리측 부담') return '우리측'
-  if (d.costHandlingType === '타업체 청구') return '타업체'
-  if (d.costHandlingType === '시공사 부담') return '기타'
-  if (d.costType === 'our') return '우리측'
-  if (d.costType === 'claim') return '타업체'
+  const bearer = getCostBearerStatus(d)
+  if (bearer === '재단') return '우리측'
+  if (bearer === '외주업체') return '타업체'
   return '기타'
 }
 
@@ -53,7 +42,7 @@ export default function OperationsStatusPage() {
   const [updatedAt, setUpdatedAt] = useState('')
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB_KEY)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [periodType, setPeriodType] = useState<PeriodType>('month')
+  const [periodType, setPeriodType] = useState<StandardPeriodType>('month')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const role = useCurrentRole()
@@ -63,51 +52,18 @@ export default function OperationsStatusPage() {
     setUpdatedAt(new Date().toLocaleString('ko-KR'))
   }, [])
 
-  // 조회기간 계산 — 집계 기준은 하자 발생일(firstOccurredAt)
-  function computePeriodRange(): { from: string | null; to: string | null; label: string } {
-    const now = new Date()
-    if (periodType === 'today') {
-      const t = toDateStr(now)
-      return { from: t, to: t, label: '오늘' }
-    }
-    if (periodType === 'week') {
-      const day = now.getDay() // 0=일요일
-      const diffToMonday = day === 0 ? 6 : day - 1
-      const monday = new Date(now); monday.setDate(now.getDate() - diffToMonday)
-      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
-      return { from: toDateStr(monday), to: toDateStr(sunday), label: '이번 주' }
-    }
-    if (periodType === 'month') {
-      const from = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-      const to = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(lastDay)}`
-      return { from, to, label: '이번 달' }
-    }
-    if (periodType === 'year') {
-      return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31`, label: '올해' }
-    }
-    if (periodType === 'custom') {
-      if (!customFrom || !customTo) return { from: null, to: null, label: '사용자 지정 (시작·종료일을 선택하세요)' }
-      return { from: customFrom, to: customTo, label: `${customFrom} ~ ${customTo}` }
-    }
-    return { from: null, to: null, label: '전체 기간' }
-  }
-
-  const period = computePeriodRange()
+  // 조회기간 계산 — Dashboard/AI보고서/보고서와 동일한 computeStandardPeriod() 하나만 쓴다
+  // (집계 기준은 하자 발생일 firstOccurredAt).
+  const period = computeStandardPeriod(periodType, customFrom || null, customTo || null)
 
   const nonDeleted = state.defects.filter(d => !d.deletedAt)
   const missingOccurredAtCount = nonDeleted.filter(d => !d.firstOccurredAt).length
 
   // 화면 전체(카테고리별 건수·달력·미완결·비용·Top3)가 이 조회기간 필터를 공통으로 사용한다.
+  // Dashboard와 동일한 filterByOccurredPeriod()를 써야 같은 기간에 같은 건수가 나온다.
   // 발생일(firstOccurredAt)이 없는 하자는 어느 기간에도 속할 수 없으므로 집계에서 제외하고,
   // missingOccurredAtCount로 별도 안내한다.
-  const baseDefects = nonDeleted.filter(d => {
-    if (!d.firstOccurredAt) return false
-    const occ = d.firstOccurredAt.slice(0, 10)
-    if (period.from && occ < period.from) return false
-    if (period.to && occ > period.to) return false
-    return true
-  })
+  const baseDefects = filterByOccurredPeriod(nonDeleted, period.from, period.to)
 
   // 카테고리 탭 — 하드코딩 없이 실제 하자 데이터에서 카테고리별 건수를 집계해 동적으로 생성한다.
   // [전체]는 항상 맨 앞 고정, 나머지는 발생 건수 내림차순(동률이면 이름 가나다순), 0건은 숨김.
@@ -152,17 +108,13 @@ export default function OperationsStatusPage() {
   // 조치완료(action_done): 실무자가 조치를 마쳤지만 관리자 최종완료 승인 전 단계 — 미완결 합계에는
   // 포함되지 않지만(집계 로직 불변), 처리 현황을 한눈에 보기 위해 별도로 함께 노출한다.
   const actionDoneItems = defects.filter(d => d.status === 'action_done')
+  // 완료/반복 — Dashboard와 동일한 공용 함수(designTokens.ts)로 계산해 같은 기간이면 항상 같은 숫자가 나온다.
+  const completedItems = defects.filter(isKpiCompleted)
+  const recurringItems = defects.filter(isRecurring)
 
   // 카드2: 조회기간 집행 비용 (defects는 이미 조회기간+카테고리 탭이 반영된 집합)
-  // 확정비용(finalCost 우선, 없으면 totalCost)과 예상비용(미확정)을 구분 집계한다.
-  const periodConfirmedCost = defects.reduce((s, d) => {
-    const { amount, confirmed } = getDisplayCost(d)
-    return s + (confirmed && amount != null ? amount : 0)
-  }, 0)
-  const periodEstimatedPendingCost = defects.reduce((s, d) => {
-    const { amount, confirmed } = getDisplayCost(d)
-    return s + (!confirmed && amount != null ? amount : 0)
-  }, 0)
+  // 확정비용(finalCost 우선, 없으면 totalCost)과 예상비용(미확정)을 Dashboard와 동일한 sumCostSummary()로 구분 집계한다.
+  const { confirmed: periodConfirmedCost, pending: periodEstimatedPendingCost } = sumCostSummary(defects)
   const periodOwnCost = defects.filter(d => costBucket(d) === '우리측').reduce((s, d) => s + (getDisplayCost(d).confirmed ? (getDisplayCost(d).amount ?? 0) : 0), 0)
   const periodClaimCost = defects.filter(d => costBucket(d) === '타업체').reduce((s, d) => s + (getDisplayCost(d).confirmed ? (getDisplayCost(d).amount ?? 0) : 0), 0)
 
@@ -207,7 +159,7 @@ export default function OperationsStatusPage() {
 
       {/* 조회기간 선택 */}
       <div style={{ position: 'sticky', top: 53, zIndex: 41, background: '#fff', borderBottom: '1px solid #e3e8ef', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
-        {PERIOD_OPTIONS.map(opt => (
+        {STANDARD_PERIOD_OPTIONS.map(opt => (
           <button
             key={opt.key}
             onClick={() => setPeriodType(opt.key)}
@@ -286,18 +238,35 @@ export default function OperationsStatusPage() {
                   </div>
                 </Link>
               </div>
+              {/* 완료/반복 — Dashboard와 동일한 공용 함수로 계산한 숫자를 그대로 노출한다 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                <Link
+                  href="/defects?filter=completed"
+                  style={{ textDecoration: 'none', display: 'block', padding: '8px 10px', borderRadius: 8, background: '#f8f9fb', border: '1px solid #eef1f5' }}
+                >
+                  <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#697386' }}>완료</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#16A34A' }}>{completedItems.length}<span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#697386', marginLeft: 3 }}>건</span></div>
+                </Link>
+                <Link
+                  href="/defects?filter=recurring"
+                  style={{ textDecoration: 'none', display: 'block', padding: '8px 10px', borderRadius: 8, background: '#f8f9fb', border: '1px solid #eef1f5' }}
+                >
+                  <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#697386' }}>반복</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#be1044' }}>{recurringItems.length}<span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#697386', marginLeft: 3 }}>건</span></div>
+                </Link>
+              </div>
             </div>
 
             <div style={{ ...card, padding: '14px 16px', position: 'relative' }}>
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#16A34A', borderRadius: '10px 10px 0 0' }} />
               <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#697386', marginBottom: 6 }}>💰 {period.label} 집행 비용</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0a2540', letterSpacing: '-0.03em', lineHeight: 1 }}>{fmtKRW(periodConfirmedCost)}</div>
-                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#0F7850', background: '#F0FDF4', padding: '2px 7px', borderRadius: 999 }}>확정</span>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: COST_CONFIRMED_COLOR.text, letterSpacing: '-0.03em', lineHeight: 1 }}>{fmtKRW(periodConfirmedCost)}</div>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: COST_CONFIRMED_COLOR.text, background: COST_CONFIRMED_COLOR.bg, padding: '2px 7px', borderRadius: 999 }}>확정</span>
               </div>
               {periodEstimatedPendingCost > 0 && (
-                <div style={{ fontSize: '0.7rem', color: '#B06B1A', marginTop: 4 }}>
-                  <span style={{ fontSize: '0.62rem', fontWeight: 700, background: '#FFF7ED', padding: '1px 6px', borderRadius: 4, marginRight: 5 }}>예상(미확정)</span>
+                <div style={{ fontSize: '0.7rem', color: COST_ESTIMATED_COLOR.text, marginTop: 4 }}>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 700, background: COST_ESTIMATED_COLOR.bg, padding: '1px 6px', borderRadius: 4, marginRight: 5 }}>예상(미확정)</span>
                   {fmtKRW(periodEstimatedPendingCost)}
                 </div>
               )}

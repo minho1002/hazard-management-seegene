@@ -16,10 +16,13 @@ import FloorLocationMarkers from '@/components/defects/FloorLocationMarkers'
 import { canRegister, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import AccessDenied from '@/components/ui/AccessDenied'
-import { STATUS_FLOW, STATUS_META, getFieldTab } from '@/lib/designTokens'
+import { STATUS_META, getFieldTab, mapCostHandlingTypeToBearer, type StatusKey } from '@/lib/designTokens'
 import AiClassificationPanel, { type AiClassificationResult } from '@/components/defects/AiClassificationPanel'
 
 const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as const
+// 등록 화면에서는 접수/검토중/담당자배정까지만 초기 상태로 선택할 수 있다 — 조치완료/재점검필요/
+// 최종완료 등 그 이후 단계는 상세화면의 관리자 승인 프로세스(상태 전환)에서만 진입할 수 있다.
+const REGISTER_STATUS_OPTIONS: StatusKey[] = ['open', 'reviewing', 'assigned']
 const RESPONSIBILITY_OPTIONS = ['시공사 귀책', '재단/운영측 부담', '외주업체 부담', '사용자 과실', '소모품/노후', '원인 불명', '분쟁 가능']
 const WARRANTY_OPTIONS = ['보증기간 내', '보증기간 외', '확인 필요'] as const
 
@@ -255,6 +258,13 @@ function NewDefectPageInner() {
       claimOrFreeRepair: form.costHandlingType === '시공사 부담' ? form.claimOrFreeRepair : null,
       costUndecidedReason: form.costHandlingType === '미정' ? (form.costUndecidedReason || null) : null,
     }
+    // 예상비용 단일 소스 — 상단 "예상 처리비용"을 우선 사용하고, 비어 있으면 비용 부담 주체별로
+    // 입력한 가변 필드(예상 자사 비용/예상 타업체 비용)를 대신 쓴다. getDisplayCost()는 estimatedCost만
+    // 읽으므로, 여기서 병합하지 않으면 가변 필드에 입력한 예상비용이 Dashboard/운영현황/하자목록/
+    // 보고서 어디에도 표시되지 않고 유실된다.
+    const resolvedEstimatedCost = form.estimatedCost
+      ? Number(form.estimatedCost)
+      : costDetail.ownCostEstimate ?? costDetail.claimCostEstimate ?? null
 
     const id = addDefectAndGetId({
       title: form.title,
@@ -270,7 +280,7 @@ function NewDefectPageInner() {
       facilityId: form.facilityId || null,
       department: form.department || null,
       expectedCompletionDate: form.expectedCompletionDate || null,
-      estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : null,
+      estimatedCost: resolvedEstimatedCost,
       categoryId,
       severity: form.severity,
       status: form.status,
@@ -291,9 +301,10 @@ function NewDefectPageInner() {
       predictionConfidence: costPrediction?.confidence ?? null,
       defectType: form.defectType,
       responsibilityType: form.responsibilityType || null,
-      // costBearer(레거시 귀책판단 필드)는 여기서 설정하지 않는다 — costHandlingType과 옵션 목록이
-      // 달라 그대로 넣으면 [id] 상세 화면의 레거시 select가 잘못된 옵션을 표시하게 된다.
-      // "확정 여부" 판단은 getCostBearerStatus()가 costHandlingType을 우선 사용하므로 문제 없다.
+      // costHandlingType을 costBearer 체계로 환산해 함께 기록한다 — Dashboard/AI보고서 등 costBearer를
+      // 직접 참조하는 집계도 등록 시점부터 바로 맞게 나오게 하기 위함. 이후 관리자가 상세화면에서
+      // 귀책판단을 확정하면 costBearer가 갱신되고, getCostBearerStatus()는 그 값을 최우선 사용한다.
+      costBearer: mapCostHandlingTypeToBearer(form.costHandlingType) ?? '미정',
       warrantyStatus: form.warrantyStatus,
       isWarrantyClaimTarget: form.isWarrantyClaimTarget,
       relatedContract: form.relatedContract || null,
@@ -460,7 +471,7 @@ function NewDefectPageInner() {
                   <div>
                     <label style={labelCls}>상태</label>
                     <select style={selectCls} value={form.status} onChange={e => setField('status', e.target.value)}>
-                      {STATUS_FLOW.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                      {REGISTER_STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
                     </select>
                   </div>
                   <div>
