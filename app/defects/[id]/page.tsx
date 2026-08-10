@@ -14,7 +14,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery'
 import { canFinalizeClassification as canFinalizeClassificationFn, canConfirmRecurring, canDelete, canEditDefect, useCurrentRole, useCurrentUserName } from '@/lib/permissions'
 import { usePermissionMatrix } from '@/lib/auth/permissionMatrix'
 import { analyzeRecurrence } from '@/lib/recurringAnalysisService'
-import AiClassificationPanel, { mapPctToDefectType, type AiClassificationResult } from '@/components/defects/AiClassificationPanel'
+import AiClassificationPanel, { mapPctToDefectType, type AiClassificationResult, type AppliedReferenceDoc } from '@/components/defects/AiClassificationPanel'
 
 const RECURRING_LEVEL_OPTIONS = ['반복 아님', '반복 의심', '반복 확정', '재점검 필요', '예방조치 진행중', '예방조치 완료'] as const
 
@@ -85,6 +85,9 @@ export default function DefectDetailPage() {
     classificationReason: '',
   })
   const [lastAiResult, setLastAiResult] = useState<AiClassificationResult | null>(null)
+  // "AI 추천 적용" 시점에 실제로 선택돼있던 적용 기준자료 스냅샷 — 관리자 최종 확정 시 이력(aiClassificationLog)에
+  // 함께 저장해, 기준자료가 나중에 수정되어도 당시 판단에 쓰인 자료/버전을 그대로 남긴다.
+  const [lastUsedReferenceDocs, setLastUsedReferenceDocs] = useState<AppliedReferenceDoc[]>([])
 
   useEffect(() => {
     if (!defectRaw) return
@@ -209,7 +212,7 @@ export default function DefectDetailPage() {
         body: JSON.stringify({
           caseNumber: defect.caseNumber,
           inputSnapshot: { title: defect.title, description: defect.description ?? '', location: defect.locationText ?? '', facility: defect.facilityName ?? '', occurredAt: defect.firstOccurredAt ?? '', category: state.categories.find(c => c.id === defect.categoryId)?.name ?? '' },
-          aiSuggestion: { ...lastAiResult, recommendedDefectType: mapped.defectType, recommendedResponsibilityType: mapped.responsibilityType, recommendedCostBearer: mapped.costBearer },
+          aiSuggestion: { ...lastAiResult, recommendedDefectType: mapped.defectType, recommendedResponsibilityType: mapped.responsibilityType, recommendedCostBearer: mapped.costBearer, appliedReferenceDocs: lastUsedReferenceDocs },
           adminFinal: { defectType: classifyForm.defectType, responsibilityType: classifyForm.responsibilityType, costBearer: classifyForm.costBearer, reason: classifyForm.classificationReason || null },
           confirmedBy: defect.managerName ?? null,
         }),
@@ -534,8 +537,9 @@ export default function DefectDetailPage() {
                       photos: [],
                     }}
                     autoRun={false}
-                    onApply={(mapped, result) => {
+                    onApply={(mapped, result, usedReferenceDocs) => {
                       setLastAiResult(result)
+                      setLastUsedReferenceDocs(usedReferenceDocs)
                       setClassifyField('defectType', mapped.defectType)
                       setClassifyField('responsibilityType', mapped.responsibilityType)
                       setClassifyField('costBearer', mapped.costBearer)

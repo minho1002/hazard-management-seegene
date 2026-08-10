@@ -39,6 +39,9 @@ export const aiClassificationLog = pgTable('ai_classification_log', {
     recommendedDefectType: string
     recommendedResponsibilityType: string
     recommendedCostBearer: string
+    // 관리자가 이 판단을 확정할 당시 사용자가 선택해 AI 분석에 적용했던 기준자료 스냅샷.
+    // jsonb라 스키마 변경(마이그레이션) 없이 추가 — 이후 기준자료가 수정/버전업되어도 이 기록은 바뀌지 않는다.
+    appliedReferenceDocs?: { id: number; vendor: string; title: string; trade: string | null; version: number }[]
   }>().notNull(),
   adminFinal: jsonb('admin_final').$type<{
     defectType: string; responsibilityType: string; costBearer: string; reason: string | null
