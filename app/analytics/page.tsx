@@ -24,6 +24,23 @@ const DEFECT_TYPE_OPTIONS = ['하자사항', '일반사항', '확인 필요'] as
 // Dashboard/하자목록/AI보고서와 동일한 비용부담주체 기준(getCostBearerStatus) — 옵션 목록도 맞춰야 필터가 정상 동작한다.
 const COST_BEARER_OPTIONS = COST_BEARER_CATEGORIES
 
+// 목록보기 탭 퀵필터 — 좌측 "미완결 현황" 사이드바(달력 보기 탭) 8종 카드와 1:1 대응하는 키를 그대로 쓴다.
+// 사용 빈도가 높은 5개만 상단에 노출하고, 나머지는 "더보기" 메뉴로 옮긴다(하자목록 페이지와 동일한 패턴).
+const LIST_PRIMARY_QUICK_FILTERS = [
+  { key: 'today', label: '오늘 우선처리', color: COLORS.danger },
+  { key: 'critical', label: '긴급만', color: COLORS.critical },
+  { key: 'overdue', label: '지연', color: '#C2410C' },
+  { key: 'unresolved', label: '미완결 합계', color: '#B91C1C' },
+  { key: 'recurring', label: '반복', color: '#be1044' },
+] as const
+const LIST_MORE_QUICK_FILTERS = [
+  { key: 'inprogress', label: '진행중', color: '#1D4ED8' },
+  { key: 'scheduled', label: '조치 예정', color: '#1D4ED8' },
+  { key: 'recheck', label: '재점검 필요', color: '#C2410C' },
+  { key: 'action_done', label: '조치완료', color: '#15803D' },
+  { key: 'completed', label: '완료', color: '#16A34A' },
+] as const
+
 function fmtKRW(n: number) {
   return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(n)
 }
@@ -69,6 +86,7 @@ export default function OperationsStatusPage() {
 
   const [showDeleted, setShowDeleted] = useState(false)
   const [quickFilter, setQuickFilter] = useState<string | null>(null)
+  const [showMoreQuickFilters, setShowMoreQuickFilters] = useState(false)
 
   function applyFilters() {
     setNlQuery(draftNlQuery)
@@ -216,6 +234,7 @@ export default function OperationsStatusPage() {
   }
 
   const filterActive = !!(nlQuery || statusFilter || severityFilter || categoryFilter || defectTypeFilter || costBearerFilter || quickFilter)
+  const activeExtraQuickFilter = LIST_MORE_QUICK_FILTERS.find(f => f.key === quickFilter)
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -465,14 +484,9 @@ export default function OperationsStatusPage() {
           </>
         ) : (
           <>
-            {/* 목록 보기 — 빠른 필터 칩(상단 8개 필터로 표현되지 않는 항목만) + 삭제됨 보기 — 하자목록 그대로 재사용 */}
+            {/* 목록 보기 — 빠른 필터 칩(사이드바 미완결 현황 8종과 1:1 대응) + 삭제됨 보기 */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              {([
-                { key: 'today', label: '오늘 우선처리', color: COLORS.danger },
-                { key: 'critical', label: '긴급만', color: COLORS.critical },
-                { key: 'overdue', label: '지연만', color: COLORS.warning },
-                { key: 'recurring', label: '반복만', color: COLORS.action },
-              ] as const).map(f => (
+              {LIST_PRIMARY_QUICK_FILTERS.map(f => (
                 <button
                   key={f.key}
                   onClick={() => setQuickFilter(quickFilter === f.key ? null : f.key)}
@@ -486,6 +500,51 @@ export default function OperationsStatusPage() {
                   {f.label}
                 </button>
               ))}
+
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowMoreQuickFilters(v => !v)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '3px 10px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
+                    border: `1.5px solid ${activeExtraQuickFilter ? activeExtraQuickFilter.color : '#E5E7EB'}`,
+                    background: activeExtraQuickFilter ? activeExtraQuickFilter.color : '#fff',
+                    color: activeExtraQuickFilter ? '#fff' : '#374151',
+                  }}
+                >
+                  {activeExtraQuickFilter ? activeExtraQuickFilter.label : '더보기'}
+                  <i className={`fa-solid fa-chevron-${showMoreQuickFilters ? 'up' : 'down'}`} style={{ fontSize: '0.55rem' }} />
+                </button>
+                {showMoreQuickFilters && (
+                  <>
+                    <div onClick={() => setShowMoreQuickFilters(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                    <div style={{
+                      position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 41, minWidth: 140,
+                      background: '#fff', border: '1px solid #e3e8ef', borderRadius: 8, boxShadow: '0 4px 14px rgba(10,37,64,.12)',
+                      padding: 6, display: 'flex', flexDirection: 'column', gap: 2,
+                    }}>
+                      {LIST_MORE_QUICK_FILTERS.map(f => (
+                        <button
+                          key={f.key}
+                          type="button"
+                          onClick={() => { setQuickFilter(quickFilter === f.key ? null : f.key); setShowMoreQuickFilters(false) }}
+                          style={{
+                            textAlign: 'left', padding: '6px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
+                            border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                            background: quickFilter === f.key ? f.color + '1a' : 'transparent',
+                            color: quickFilter === f.key ? f.color : '#374151',
+                          }}
+                        >
+                          {quickFilter === f.key && <i className="fa-solid fa-check" style={{ marginRight: 6, fontSize: '0.6rem' }} />}
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
               {canSeeDeleted && (
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#697386', cursor: 'pointer', marginLeft: 'auto' }}>
                   <input type="checkbox" checked={showDeleted} onChange={e => setShowDeleted(e.target.checked)} />
