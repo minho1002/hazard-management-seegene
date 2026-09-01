@@ -195,7 +195,11 @@ export default function DefectDetailPage() {
 
   function submitActionDone() {
     if (!actionDoneForm.actionCompletedAt) { alert('조치완료일을 입력해야 합니다.'); return }
-    if (applyStatusChange('action_done', actionDoneForm)) setShowActionDoneModal(false)
+    if (!applyStatusChange('action_done', actionDoneForm)) return
+    // 조치완료 전환과 동시에 비용 부담 주체·결제 수단도 함께 확정한다 — 별도로
+    // "관리자 최종 확정"을 다시 누르지 않아도 되도록 두 단계를 하나로 합친다.
+    submitClassification()
+    setShowActionDoneModal(false)
   }
 
   function setClassifyField(k: string, v: string | boolean) {
@@ -591,6 +595,7 @@ export default function DefectDetailPage() {
             <div style={{ ...card, marginTop: 16 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f4f8' }}>
                 <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#697386' }}>비용 처리 정보</span>
+                <div style={{ fontSize: '0.68rem', color: '#8792a2', marginTop: 3 }}>비용 부담 주체·결제 수단은 보통 "조치완료" 처리 시 함께 입력합니다. 여기서는 이후에 값이 바뀌었을 때만 수정하면 됩니다.</div>
               </div>
               <div style={{ padding: 16 }}>
                 {canEditClassification ? (
@@ -877,7 +882,7 @@ export default function DefectDetailPage() {
         >
           <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 430, maxWidth: '94vw', boxShadow: '0 8px 28px rgba(10,37,64,.13)', border: '1px solid #e3e8ef' }}>
             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0a2540', marginBottom: 4 }}>조치완료 처리</div>
-            <div style={{ fontSize: '0.72rem', color: '#697386', marginBottom: 16 }}>조치완료일은 필수 입력입니다. 조치 내용과 실제 비용은 선택 입력이며, 비워두고 전환할 수 있습니다.</div>
+            <div style={{ fontSize: '0.72rem', color: '#697386', marginBottom: 16 }}>조치완료일은 필수 입력입니다. 나머지 항목은 선택 입력이며, 비워두고 전환할 수 있습니다. 여기서 입력한 비용 부담 주체·결제 수단은 "관리자 최종 확정"을 다시 누르지 않아도 함께 저장됩니다.</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>조치완료일 *</label>
@@ -892,6 +897,25 @@ export default function DefectDetailPage() {
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>실제 비용 (원)</label>
                 <input type="number" style={modalInputStyle} placeholder="0" value={actionDoneForm.actualCost} onChange={e => setActionDoneForm(f => ({ ...f, actualCost: e.target.value }))} />
                 <span style={{ fontSize: '0.66rem', color: '#aab' }}>등록 시 입력한 예상비용으로 미리 채워집니다 — 확정 금액으로 수정 후 전환하면 "확정비용"으로 저장됩니다.</span>
+              </div>
+              <div style={{ borderTop: '1px dashed #e3e8ef', paddingTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>비용 부담 주체</label>
+                  <select style={classifySelectStyle} value={classifyForm.costBearer} onChange={e => setClassifyField('costBearer', e.target.value)}>
+                    {COST_BEARER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466' }}>결제 수단</label>
+                  <select
+                    style={classifySelectStyle}
+                    value={defect.paymentMethod ?? ''}
+                    onChange={e => updateDefect(defect.id, { paymentMethod: (e.target.value || null) as Defect['paymentMethod'] })}
+                  >
+                    <option value="">공란</option>
+                    {PAYMENT_METHOD_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>

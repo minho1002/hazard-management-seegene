@@ -352,7 +352,11 @@ export function getCostBearerStatus(defect: Defect): CostBearerCategory {
 export function getPaymentBadge(defect: Defect, files: DefectFile[]): PaymentBadge | null {
   // 예상비용만 있고 아직 확정 전인 건도 결제 수단은 미리 지정할 수 있으므로,
   // 확정비용(totalCost)뿐 아니라 예상비용까지 포함한 비용 정보 유무로 게이팅한다.
-  if (getDisplayCost(defect).amount == null) return null
+  const displayCost = getDisplayCost(defect)
+  if (displayCost.amount == null) return null
+  // 확정비용이 0원(예: 보증기간 내 무상 조치)이면 실제로 결제할 금액이 없으므로 결제 수단
+  // 미입력을 "미정산" 오류로 표시하지 않는다 — 결제 수단을 공란으로 남겨도 정상이다.
+  if (displayCost.confirmed && displayCost.amount === 0) return null
   const hasReceipt = files.some(f => f.defectId === defect.id && (f.photoType === 'quote' || f.photoType === 'work_confirmation'))
   if (!defect.paymentMethod || defect.paymentMethod === '미정') {
     return { label: '미정산', icon: '❌', tone: 'danger', hasReceipt: false }
