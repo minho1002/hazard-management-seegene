@@ -624,9 +624,10 @@ export default function DefectDetailPage() {
                         <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#425466', display: 'block', marginBottom: 5 }}>결제 수단</label>
                         <select
                           style={classifySelectStyle}
-                          value={defect.paymentMethod ?? '미정'}
-                          onChange={e => updateDefect(defect.id, { paymentMethod: e.target.value as Defect['paymentMethod'] })}
+                          value={defect.paymentMethod ?? ''}
+                          onChange={e => updateDefect(defect.id, { paymentMethod: (e.target.value || null) as Defect['paymentMethod'] })}
                         >
+                          <option value="">공란</option>
                           {PAYMENT_METHOD_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>

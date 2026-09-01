@@ -371,7 +371,7 @@ export default function OperationsStatusPage() {
             {/* 좌우 분할: 달력 / 핵심카드 — 기존 운영현황(구 /analytics) 레이아웃 그대로 재사용 */}
             <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '1fr 360px', gap: 12, marginBottom: 16 }}>
               <div style={{ ...card, padding: 14 }}>
-                <DefectCalendar defects={filteredDefects} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+                <DefectCalendar defects={filteredDefects} selectedDate={selectedDate} onSelectDate={setSelectedDate} focusMonth={period.from} />
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

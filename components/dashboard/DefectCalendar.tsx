@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Defect } from '@/lib/store'
 import { isOverdue, OVERDUE_DAYS_BY_SEVERITY, type SeverityKey } from '@/lib/designTokens'
 
@@ -41,10 +41,20 @@ interface Props {
   defects: Defect[]
   selectedDate: string | null
   onSelectDate: (date: string | null) => void
+  // 상단 "조회기간"(오늘/이번주/이번달/올해/사용자지정/전체기간) 선택값의 시작일 — 값이 바뀔 때마다
+  // 달력이 그 월로 자동 이동한다. 이게 없으면 달력을 다른 달로 넘겨둔 채 조회기간을 바꿨을 때
+  // 화면에 보이는 달과 실제로 집계된 기간이 어긋나 달력이 비어 보이는 것처럼 느껴진다.
+  focusMonth?: string | null
 }
 
-export default function DefectCalendar({ defects, selectedDate, onSelectDate }: Props) {
+export default function DefectCalendar({ defects, selectedDate, onSelectDate, focusMonth }: Props) {
   const [cursor, setCursor] = useState(() => new Date())
+
+  useEffect(() => {
+    const anchor = focusMonth ? new Date(focusMonth) : new Date()
+    if (!isNaN(anchor.getTime())) setCursor(new Date(anchor.getFullYear(), anchor.getMonth(), 1))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusMonth])
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, DayEvent[]> = {}
